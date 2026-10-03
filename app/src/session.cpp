@@ -102,6 +102,7 @@ const char* kindName(SignalKind k) {
         case SignalKind::Line: return "line";
         case SignalKind::Expression: return "expression";
         case SignalKind::Gesture: return "gesture";
+        case SignalKind::Sticker: return "sticker";
     }
     return "?";
 }
@@ -243,10 +244,11 @@ void Session::startHand() {
     const auto n = static_cast<std::size_t>(h.numSeats());
     features_.assign(n, {});
     if (thinkHistory_.size() != n) thinkHistory_.assign(n, {});
-    talkCount_.assign(n, {0, 0, 0});
+    talkCount_.assign(n, {0, 0, 0, 0});
     talkStreet_ = Street::Preflop;
     tellUses_.clear();
     actThink_.clear();
+    actSize_.clear();
     actConverted_ = 0;
     plan_.reset();
     fullyShown_.assign(n, false);
@@ -294,16 +296,29 @@ bool Session::stepBot() {
     const PlayerView before = h.view(s);
     Action a = bot.decideTalk(before, ai::TalkView{features_}, *rng_);
     if (!h.legal().canFold && a.type == ActionType::Fold) a = Action::check();
+    const Sizing size = sizingOf(h, a);
+    const std::size_t actEvent = h.events().size();  // index the act event will get
     if (!h.act(a)) {
         // A bot should never pick an illegal move; fall back to the safest legal one.
         const LegalActions la = h.legal();
         a = la.canCheck ? Action::check() : Action::fold();
         h.act(a);
     }
-    recordThink(s, plan.thinkMs, a);
-    if (plan.timingTell >= 0 && aggressive(a)) tellUses_.push_back({s, plan.timingTell});
-    collect();
+    recordAction(s, plan.thinkMs, a, size);
+    // Its timing or sizing matched one of its tells: the player may catch it at showdown.
+    const ai::MindProfile& mind = ai::mindProfile(personality_[static_cast<std::size_t>(s)]);
+    if (plan.timingTell >= 0) {
+        const ai::Tell* t = ai::findTell(plan.timingTell);
+        const bool forBets = t && (t->feature == kFeatureFastBet || t->feature == kFeatureSlowBet);
+        if (t && (forBets ? aggressive(a) : a.type == ActionType::Call)) tellUses_.push_back({s, plan.timingTell});
+    }
+    for (const ai::Tell& t : mind.tells)
+        if (size.feature >= 0 && t.feature == size.feature) tellUses_.push_back({s, t.id});
+    // What it says after acting belongs right after the action, before any board
+    // cards or showdown the action may have triggered.
+    collect(actEvent + 1);
     emitTalk(s, bot.afterAction(before, a, *rng_));
+    collect();
     return true;
 }
 
@@ -318,24 +333,42 @@ bool Session::humanAct(const std::string& type, double to, int thinkMs) {
     else if (type == "bet") a = Action::bet(amount);
     else if (type == "raise") a = Action::raise(amount);
     else return false;
+    const Sizing size = sizingOf(h, a);
     if (!h.act(a)) return false;
-    recordThink(kHuman, std::max(0, thinkMs), a);  // before collect(): the act event carries it
+    recordAction(kHuman, std::max(0, thinkMs), a, size);  // before collect(): the act event carries it
     collect();
     return true;
 }
 
-void Session::recordThink(int seat, int thinkMs, const Action& a) {
+Session::Sizing Session::sizingOf(const Hand& h, const Action& a) const {
+    Sizing out;
+    if (!aggressive(a) || h.street() == Street::Preflop) return out;  // preflop sizes are conventions
+    const SeatState& st = h.seat(h.toAct());
+    const Chips toCall = std::max<Chips>(0, h.currentBet() - st.street);
+    const Chips raiseBy = a.to - h.currentBet();
+    const double frac = static_cast<double>(raiseBy) / static_cast<double>(std::max<Chips>(1, h.pot() + toCall));
+    out.pct = static_cast<int>(std::lround(frac * 100));
+    out.feature = sizingFeature(frac, a.to >= st.street + st.stack);
+    return out;
+}
+
+void Session::recordAction(int seat, int thinkMs, const Action& a, const Sizing& size) {
     auto& hist = thinkHistory_[static_cast<std::size_t>(seat)];
-    // A bet much faster or slower than this player's usual pace is a timing tell.
-    if (aggressive(a) && hist.size() >= 4) {
+    auto& feats = features_[static_cast<std::size_t>(seat)];
+    // Acting much faster or slower than this player's usual pace is a timing tell.
+    const bool isCall = a.type == ActionType::Call;
+    if ((aggressive(a) || isCall) && hist.size() >= 4) {
         std::vector<int> sorted(hist.end() - static_cast<std::ptrdiff_t>(std::min<std::size_t>(hist.size(), 20)), hist.end());
         std::sort(sorted.begin(), sorted.end());
         const double median = sorted[sorted.size() / 2];
-        if (thinkMs < 0.55 * median) features_[static_cast<std::size_t>(seat)].push_back(kFeatureFastBet);
-        else if (thinkMs > 1.8 * median) features_[static_cast<std::size_t>(seat)].push_back(kFeatureSlowBet);
+        if (thinkMs < 0.55 * median) feats.push_back(isCall ? kFeatureFastCall : kFeatureFastBet);
+        else if (thinkMs > 1.8 * median) feats.push_back(isCall ? kFeatureSlowCall : kFeatureSlowBet);
     }
+    // And how big the bet was compared to the pot.
+    if (size.feature >= 0) feats.push_back(size.feature);
     hist.push_back(thinkMs);
     actThink_.push_back(thinkMs);
+    actSize_.push_back(size.pct);
 }
 
 bool Session::inPlay(int seat) const {
@@ -361,7 +394,7 @@ void Session::emitTalk(int seat, const ai::Talk& talk) {
 
 bool Session::humanSignal(int kind, int code, int target) {
     const Hand* h = tournament_->currentHand();
-    if (!h || handSettled_ || kind < 0 || kind > 2) return false;
+    if (!h || handSettled_ || kind < 0 || kind > 3) return false;
     const auto k = static_cast<SignalKind>(kind);
     if (code < 0 || code >= codeCount(k)) return false;
     if (target < -1 || target >= h->numSeats() || target == kHuman) return false;
@@ -370,9 +403,9 @@ bool Session::humanSignal(int kind, int code, int target) {
     // Rate limit per street: 3 lines, 4 expressions, 3 gestures.
     if (h->street() != talkStreet_) {
         talkStreet_ = h->street();
-        for (auto& c : talkCount_) c = {0, 0, 0};
+        for (auto& c : talkCount_) c = {0, 0, 0, 0};
     }
-    static constexpr int kLimit[3] = {3, 4, 3};
+    static constexpr int kLimit[4] = {3, 4, 3, 3};
     auto& count = talkCount_[kHuman][static_cast<std::size_t>(kind)];
     if (count >= kLimit[kind]) return false;
     ++count;
@@ -380,8 +413,8 @@ bool Session::humanSignal(int kind, int code, int target) {
     const Signal sig{kHuman, target, k, static_cast<std::uint8_t>(code)};
     emitSignal(sig);
 
-    // Someone answers a line: the one it was aimed at, else a bot still in the hand.
-    if (k == SignalKind::Line) {
+    // Someone answers a line or a sticker: the one it was aimed at, else a bot still in the hand.
+    if (k == SignalKind::Line || k == SignalKind::Sticker) {
         int responder = target;
         if (responder < 0) {
             std::vector<int> candidates;
@@ -504,11 +537,12 @@ void Session::finishHand() {
     }
 }
 
-void Session::collect() {
+void Session::collect(std::size_t upTo) {
     Hand* h = tournament_->currentHand();
     if (!h) return;
     const auto& ev = h->events();
-    for (; converted_ < ev.size(); ++converted_) {
+    const std::size_t end = std::min(upTo, ev.size());
+    for (; converted_ < end; ++converted_) {
         const Event& e = ev[converted_];
         if (e.visibleTo >= 0 && e.visibleTo != kHuman) continue;
         const std::string j = eventJson(e);
@@ -558,7 +592,10 @@ std::string Session::eventJson(const Event& e) {
             j.key("t").str("act").key("seat").num(e.seat).key("action").str(actionName(e.action));
             j.key("amount").num(static_cast<double>(e.amount)).key("total").num(static_cast<double>(e.total));
             j.key("allIn").boolean(e.allIn).key("street").str(streetName(e.street));
-            if (actConverted_ < actThink_.size()) j.key("thinkMs").num(actThink_[actConverted_]);
+            if (actConverted_ < actThink_.size()) {
+                j.key("thinkMs").num(actThink_[actConverted_]);
+                if (actSize_[actConverted_] > 0) j.key("potPct").num(actSize_[actConverted_]);
+            }
             ++actConverted_;
             break;
         case EventType::BoardDealt: {

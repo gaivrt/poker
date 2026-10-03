@@ -66,7 +66,10 @@ TEST(mind_classify_hand) {
     CHECK(classifyHand(h("As Ah"), {}) == Strength::Strong);
     CHECK(classifyHand(h("7c 2d"), {}) == Strength::Weak);
     CHECK(classifyHand(h("Qs Qd"), parseCards("Qh 7c 2d")) == Strength::Strong);   // set
-    CHECK(classifyHand(h("Ks 9d"), parseCards("Kh 7c 2d")) == Strength::Medium);   // one pair
+    CHECK(classifyHand(h("Ks 9d"), parseCards("Kh 7c 2d")) == Strength::Medium);   // top pair
+    CHECK(classifyHand(h("As Ad"), parseCards("Kh 7c 2d")) == Strength::Strong);   // overpair
+    CHECK(classifyHand(h("7s 6d"), parseCards("Kh 7c 2d")) == Strength::Weak);     // middle pair
+    CHECK(classifyHand(h("As 3d"), parseCards("Kh Kc 2d")) == Strength::Weak);     // pair on the board
     CHECK(classifyHand(h("As 3d"), parseCards("Kh 7c 2d")) == Strength::Weak);     // nothing
     // Two pair that is all on the board is not a strong hand.
     CHECK(classifyHand(h("As 3d"), parseCards("Kh Kc 7d 7s 2c")) == Strength::Weak);
@@ -148,4 +151,110 @@ TEST(mind_session_show_choice_and_tells) {
     CHECK(tellsSeen > 0);
     (void)shows;
     (void)angry;
+}
+
+namespace {
+// Heads-up flop checked to seat 1, which holds `hole1`; returns its average bet as a
+// fraction of the pot over the times it chose to bet.
+double avgBetFraction(int personality, const char* hole1, int* bets) {
+    const auto h1 = parseCards(hole1);
+    std::vector<Card> top = {parseCards("2s")[0], h1[0], parseCards("3d")[0], h1[1]};
+    for (Card c : parseCards("5c Qh 9c 4s")) top.push_back(c);
+    HandConfig c;
+    c.stacks = {4000, 4000};
+    c.button = 1;
+    c.smallBlind = 10;
+    c.bigBlind = 20;
+    Hand h(c, Deck::stacked(top));
+    h.act(Action::raise(100));  // seat 1 raises, seat 0 calls: a 200 pot
+    h.act(Action::call());
+    h.act(Action::check());     // seat 0 checks the flop to seat 1
+    const PlayerView v = h.view(1);
+    Xoshiro256 rng(5);
+    auto bot = makeBot(Difficulty::Easy, personalityPresets()[static_cast<std::size_t>(personality)]);
+    double sum = 0;
+    *bets = 0;
+    for (int i = 0; i < 3000; ++i) {
+        bot->plan(v, rng);
+        const Action a = bot->decideTalk(v, TalkView{{{}, {}}}, rng);
+        if (a.type != ActionType::Bet) continue;
+        ++*bets;
+        sum += static_cast<double>(a.to) / static_cast<double>(v.pot);
+    }
+    return *bets ? sum / *bets : 0;
+}
+}  // namespace
+
+// Bet sizing is part of each character: 团子 bets big with monsters, 狐 the reverse.
+TEST(mind_sizing_styles) {
+    int nStrong = 0, nWeak = 0;
+    const double dangoStrong = avgBetFraction(1, "Qs Qd", &nStrong);  // top set
+    const double dangoWeak = avgBetFraction(1, "7h 6d", &nWeak);      // air
+    CHECK(nStrong > 100);
+    if (nWeak > 20) CHECK(dangoStrong > dangoWeak + 0.2);
+    const double foxStrong = avgBetFraction(5, "Qs Qd", &nStrong);
+    const double foxWeak = avgBetFraction(5, "7h 6d", &nWeak);
+    CHECK(nWeak > 50);
+    CHECK(foxWeak > foxStrong + 0.2);
+    // 凛 is balanced: similar sizes either way.
+    const double rinStrong = avgBetFraction(0, "Qs Qd", &nStrong);
+    const double rinWeak = avgBetFraction(0, "7h 6d", &nWeak);
+    if (nWeak > 20) CHECK(std::abs(rinStrong - rinWeak) < 0.15);
+}
+
+TEST(mind_session_sizing_and_stickers) {
+    ReadModel m;
+    for (int i = 0; i < 6; ++i) m.observe({kFeatureBigBet}, Strength::Weak);
+    CHECK(m.belief({kFeatureBigBet}, 2.0, false) < 0.4);  // big bets from this player are bluffs
+
+    Session s("standard", 1, 31);
+    s.startHand();
+    std::string all = s.drainEvents();
+    int stickers = 0;
+    for (int i = 0; i < 5; ++i) stickers += s.humanSignal(3, i, -1) ? 1 : 0;
+    CHECK_EQ(stickers, 3);
+    CHECK(!s.humanSignal(3, 8, -1));  // no such sticker
+    all += s.drainEvents();
+    CHECK(count(all, "\"kind\":\"sticker\"") >= 3);
+    // Postflop bets carry their size in % of the pot.
+    int guard = 0;
+    while (!s.finished() && ++guard < 5000 && count(all, "potPct") == 0) {
+        all += s.drainEvents();
+        if (s.isHumanTurn()) s.humanAct("call", 0, 1500) || s.humanAct("check", 0, 1500);
+        else if (s.handRunning()) {
+            s.prepareBot();
+            s.stepBot();
+        } else {
+            s.finishHand();
+            if (!s.finished()) s.startHand();
+        }
+        all += s.drainEvents();
+    }
+    CHECK(count(all, "potPct") > 0);
+}
+
+// A bot's words after its action come before anything that action set off.
+TEST(mind_bot_talk_precedes_showdown) {
+    for (unsigned seed = 1; seed <= 30; ++seed) {
+        Session s("quick", 0, seed);
+        s.startHand();
+        std::string all;
+        int guard = 0;
+        while (!s.finished() && ++guard < 5000) {
+            all += s.drainEvents();
+            if (s.isHumanTurn()) s.humanAct("fold", 0, 1000) || s.humanAct("check", 0, 1000);
+            else if (s.handRunning()) {
+                s.prepareBot();
+                s.stepBot();
+                const std::string batch = s.drainEvents();
+                // In any batch, a signal never comes after the hand's end.
+                const auto end = batch.find("\"t\":\"handEnd\"");
+                if (end != std::string::npos) CHECK(batch.find("\"t\":\"signal\"", end) == std::string::npos);
+                all += batch;
+            } else {
+                s.finishHand();
+                if (!s.finished()) s.startHand();
+            }
+        }
+    }
 }

@@ -19,20 +19,21 @@ async function hold(ms: number, skipped: () => boolean) {
   for (let t = 0; t < ms && !skipped(); t += step) await wait(step);
 }
 
-/** Tier 2: a diagonal band with the character sweeps across (~1.2 s). */
-export async function allInCutIn(layer: Container, char: Character, line: string) {
+/** Tier 2: a diagonal band with the character sweeps across (~1.2 s).
+ *  Also used for the victory moment of a big pot (title "WIN", gold band). */
+export async function allInCutIn(layer: Container, char: Character, line: string, title = 'ALL IN', bandColor = char.color) {
   const root = new Container();
   const shade = new Graphics().rect(0, 0, 1920, 1080).fill({ color: 0x000000, alpha: 0.35 });
   const band = new Container();
   const bandG = new Graphics()
-    .poly([-200, 380, 2120, 300, 2120, 700, -200, 780]).fill(char.color)
+    .poly([-200, 380, 2120, 300, 2120, 700, -200, 780]).fill(bandColor)
     .poly([-200, 400, 2120, 320, 2120, 330, -200, 410]).fill({ color: 0xffffff, alpha: 0.6 })
     .poly([-200, 750, 2120, 670, 2120, 680, -200, 760]).fill({ color: 0xffffff, alpha: 0.6 });
   const portrait = new Graphics().circle(520, 540, 170).fill(0xffffff).circle(520, 540, 156).fill(char.color);
   const glyph = new Text({ text: char.name.slice(0, 1), style: { fontFamily: FONT, fontSize: 170, fontWeight: '900', fill: 0xffffff } });
   glyph.anchor.set(0.5);
   glyph.position.set(520, 540);
-  const allIn = new Text({ text: 'ALL IN', style: { fontFamily: FONT, fontSize: 150, fontWeight: '900', fontStyle: 'italic', fill: 0xffffff, stroke: { color: 0x22223a, width: 10 } } });
+  const allIn = new Text({ text: title, style: { fontFamily: FONT, fontSize: 150, fontWeight: '900', fontStyle: 'italic', fill: 0xffffff, stroke: { color: 0x22223a, width: 10 } } });
   allIn.position.set(760, 390);
   const say = new Text({ text: `${char.name}「${line}」`, style: { fontFamily: FONT, fontSize: 38, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x22223a, width: 6 } } });
   say.position.set(790, 580);

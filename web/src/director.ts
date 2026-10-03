@@ -6,8 +6,9 @@
 // that gets turned face up is written into the "reading notes" next to what that
 // player said and did, so you can learn their habits.
 import type { Container } from 'pixi.js';
-import { type Character, EXPRESSION_LABEL, gestureCaption, pick, talkLine } from './characters';
-import { Expression, type Game, type GameEvent, Gesture, type StrengthName, type TableState } from './engine';
+import { type Character, EXPRESSION_LABEL, STICKER_LABEL, gestureCaption, pick, talkLine } from './characters';
+import { Expression, type Game, type GameEvent, Gesture, type SignalKindName, Sticker, type StrengthName, type TableState } from './engine';
+import type { Face } from './fx/stickers';
 import { allInCutIn, bigHand, riverPunch } from './fx/effects';
 import type { TableView } from './table/TableView';
 import { fmt } from './table/layout';
@@ -65,6 +66,11 @@ export class Director {
   private clock: Clock = { perActionMs: 20000, bankMs: 30000 };
   private heroHole: string[] = [];
   private did: string[][] = [[], [], [], [], [], []]; // what each seat said/did this hand
+  private equity: Record<number, number> = {}; // last shown all-in equity per seat
+  private winners = new Set<number>();          // seats that win a pot in the batch being played
+  private wonTotal: Record<number, number> = {};
+  private reacted = false;                      // showdown reactions already played this hand
+  private tableChips = 0;
   private notes: Note[][] = [[], [], [], [], [], []];
 
   constructor(
@@ -127,12 +133,14 @@ export class Director {
         if (this.stopped) break;
         g.stepBot();
       } else {
-        await wait(this.handHasWinner ? 1200 : 500);
+        await wait(600);
         if (g.canShow && !this.skipping) {
           const mask = await this.ui.askShow(this.heroHole.map(prettyCard));
           if (mask) g.show(mask);
           await this.play(g.drain());
         }
+        // Let the result sink in before the next hand ("下一手" skips ahead).
+        if (!this.skipping && timing.scale > 0) await this.ui.waitNext(this.reacted ? 5000 : 3000);
         g.finishHand();
         await this.play(g.drain());
         if (this.stopped || g.finished) break;
@@ -144,7 +152,7 @@ export class Director {
 
   // ---------------- table talk ----------------
 
-  private talk(kind: 'line' | 'expression' | 'gesture', code: number, target: number): boolean {
+  private talk(kind: SignalKindName, code: number, target: number): boolean {
     if (this.stopped || this.heroOut) return false;
     const ok = this.game.signal(kind, code, target);
     for (const e of this.game.drain()) {
@@ -164,9 +172,22 @@ export class Director {
       const text = talkLine(c, e.code);
       seat.say(text, 2400, targetName);
       note = `说「${text}」${targetName ? `（对${targetName}）` : ''}`;
+    } else if (e.kind === 'sticker') {
+      seat.showSticker(e.code as Sticker);
+      note = `发了表情包「${STICKER_LABEL[e.code as Sticker]}」${targetName ? `（对${targetName}）` : ''}`;
     } else if (e.kind === 'expression') {
-      seat.setExpression(e.code as Expression);
-      note = `表情：${EXPRESSION_LABEL[e.code as Expression]}`;
+      const ex = e.code as Expression;
+      seat.setExpression(ex);
+      const face: Record<Expression, Face | null> = {
+        [Expression.Calm]: null,
+        [Expression.Smug]: Sticker.Smug,
+        [Expression.Nervous]: 'nervous',
+        [Expression.Smile]: Sticker.GoodHand,
+        [Expression.Angry]: Sticker.Angry,
+      };
+      const f = face[ex];
+      if (f !== null) seat.showSticker(f);
+      note = `表情：${EXPRESSION_LABEL[ex]}`;
     } else {
       const g = e.code as Gesture;
       const caption = gestureCaption(g, targetName);
@@ -217,6 +238,34 @@ export class Director {
     return `<p class="hint">每次有人亮牌，这里会记下她这一手说过什么、做过什么、想了多久。对照她的真实牌力，找出她的习惯。</p>${sections}`;
   }
 
+  /** The moment the hands are turned over, before any chips move: winners gloat,
+   *  losers sulk, and whoever was ahead and got outdrawn is stunned. Driven only by
+   *  cards that are already face up, so it never gives anything away. */
+  private async showdownReactions(revealed: number[]) {
+    if (this.reacted || this.pres === 'off') return;
+    this.reacted = true;
+    const T = this.table;
+    T.showBanner('胜负揭晓');
+    await wait(700);
+    for (const seat of revealed) {
+      if (seat === 0) continue; // the system never acts for the human
+      const c = this.cast[seat];
+      const s = T.seats[seat];
+      if (this.winners.has(seat)) {
+        s.showSticker(Math.random() < 0.5 ? Sticker.Smug : Sticker.GoodHand);
+        s.say(pick(c.lines.win) ?? '赢了！', 2200);
+      } else {
+        const outdrawn = (this.equity[seat] ?? 0) >= 55;
+        const sulky = c.style === '疯狂型' || c.style === '紧凶型';
+        s.showSticker(outdrawn ? Sticker.Shock : sulky ? Sticker.Angry : Sticker.Cry);
+        s.say(outdrawn ? '怎么可能！？' : sulky ? '……可恶。' : '呜……输了。', 2200);
+      }
+      await wait(250);
+    }
+    await wait(1300);
+    T.hideBanner();
+  }
+
   // ---------------- event playback ----------------
 
   private markActive() {
@@ -247,6 +296,11 @@ export class Director {
 
   private async play(events: GameEvent[]) {
     const all = [...this.backlog.splice(0), ...events];
+    for (const e of all)
+      if (e.t === 'win') {
+        this.winners.add(e.seat);
+        this.wonTotal[e.seat] = (this.wonTotal[e.seat] ?? 0) + e.amount;
+      }
     for (const e of all) {
       if (this.stopped) return;
       await this.playOne(e);
@@ -278,6 +332,11 @@ export class Director {
         this.best = {};
         this.did = this.did.map(() => []);
         this.heroHole = [];
+        this.equity = {};
+        this.winners.clear();
+        this.wonTotal = {};
+        this.reacted = false;
+        this.tableChips = e.stacks.reduce((a, b) => a + b, 0);
         this.lineCooldown = this.lineCooldown.map((c) => Math.max(0, c - 1));
         this.ui.resetPreActions();
         T.newHand(e.stacks, e.button);
@@ -314,6 +373,7 @@ export class Director {
         const c = this.cast[e.seat];
         s.setActive(false);
         const secs = e.thinkMs !== undefined ? ` ${(e.thinkMs / 1000).toFixed(1)}s` : '';
+        const size = e.potPct ? ` ${e.potPct}%池` : '';
         if (e.action === 'fold') {
           s.setFolded(true);
           s.setTag('弃牌', 0x9a94b8);
@@ -323,17 +383,19 @@ export class Director {
           const verb = e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注';
           s.setStack(s.stack - e.amount);
           s.setBet(e.total);
-          s.setTag(`${verb}${secs}`, 0xffe08a);
+          s.setTag(`${verb}${size}${secs}`, 0xffe08a);
           void T.flyChip(s.L.avatar, s.betPos, 220);
-          // How long it took to put chips in is part of what others can read.
-          if (e.thinkMs !== undefined) this.did[e.seat].push(`${verb}前想了 ${(e.thinkMs / 1000).toFixed(1)} 秒`);
+          // How big and how fast the chips went in is part of what others can read.
+          const sizeNote = e.potPct ? `（底池的 ${e.potPct}%）` : '';
+          if (e.thinkMs !== undefined) this.did[e.seat].push(`${verb}${sizeNote}前想了 ${(e.thinkMs / 1000).toFixed(1)} 秒`);
+          else if (sizeNote) this.did[e.seat].push(`${verb}${sizeNote}`);
         }
         T.refreshPot();
         if (e.allIn) {
           s.markAllIn();
           if (this.pres === 'full') await allInCutIn(this.fxLayer, c, pick(c.lines.allIn) ?? 'ALL IN！');
         }
-        await wait(e.action === 'fold' ? 120 : 220);
+        await wait(e.action === 'fold' ? 300 : 500);
         break;
       }
       case 'signal':
@@ -352,8 +414,12 @@ export class Director {
         } else {
           await T.revealBoard(e.cards, dramatic);
         }
-        if (e.equity) for (const q of e.equity) T.seats[q.seat].showEquity(q.pct);
-        if (dramatic) await wait(e.street === 'river' ? 300 : 700);
+        if (e.equity)
+          for (const q of e.equity) {
+            T.seats[q.seat].showEquity(q.pct);
+            if (e.street !== 'river') this.equity[q.seat] = q.pct;
+          }
+        await wait(dramatic ? (e.street === 'river' ? 400 : 900) : 700); // a beat to read the new card
         break;
       }
       case 'uncalled': {
@@ -377,7 +443,11 @@ export class Director {
         await s.reveal(e.cards);
         if (e.hand) s.showHand(e.hand);
         this.best[e.seat] = e.best;
-        if (e.equity) for (const q of e.equity) T.seats[q.seat].showEquity(q.pct);
+        if (e.equity)
+          for (const q of e.equity) {
+            T.seats[q.seat].showEquity(q.pct);
+            this.equity[q.seat] = q.pct;
+          }
         break;
       }
       case 'finalHands':
@@ -387,6 +457,7 @@ export class Director {
           const cards = T.seats[h.seat].cards.map((c) => c.code ?? '').filter(Boolean);
           this.addNote(h.seat, cards, h.hand, h.strength, false);
         }
+        await this.showdownReactions(e.hands.map((h) => h.seat));
         break;
       case 'voluntaryShow': {
         const s = T.seats[e.seat];
@@ -423,9 +494,16 @@ export class Director {
         T.showBanner(`${c.name} 赢得 ${fmt(e.amount)}${e.pot > 0 ? '（边池）' : ''}`, e.hand ?? '');
         if (e.category !== undefined && e.category >= BIG_HAND_CATEGORY && this.pres === 'full' && e.pot === 0)
           await bigHand(this.fxLayer, c, e.royal ? '皇家同花顺' : (e.hand ?? '').split(' ')[0], !!e.royal);
+        else if (first && e.seat !== 0 && this.pres === 'full' && (this.wonTotal[e.seat] ?? 0) >= this.tableChips * 0.25)
+          await allInCutIn(this.fxLayer, c, pick(c.lines.win) ?? '我赢了！', 'WIN', 0xe0a630);
+        if (first && !e.hand && e.seat !== 0 && this.pres !== 'off') {
+          // Everyone folded to a bot: it gloats a little.
+          T.seats[e.seat].showSticker(Math.random() < 0.5 ? Sticker.Smug : Sticker.Taunt);
+          this.say(e.seat, c.lines.win, 0.7);
+        }
         await T.payOut(e.seat, e.amount);
-        this.say(e.seat, c.lines.win, 0.6);
-        await wait(e.hand ? 900 : 400);
+        if (!this.reacted) this.say(e.seat, c.lines.win, 0.6);
+        await wait(e.hand ? 1200 : 700);
         break;
       }
       case 'handEnd':

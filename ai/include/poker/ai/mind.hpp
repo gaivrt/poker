@@ -30,6 +30,7 @@ struct MindProfile {
     double tiltProne;     // chance to tilt after a big loss
     double showBluff;     // chance to show a bluff after winning uncontested
     int thinkMs;          // typical time per decision
+    double sizing;        // +1 bets bigger with strong hands, -1 bigger with bluffs, 0 balanced
     std::vector<Tell> tells;
 };
 

@@ -97,13 +97,15 @@ public:
         if (v.legal.canFold && strength_ == Strength::Weak) ms *= 0.75;  // easy folds come quickly
         for (const Tell& t : mind_.tells) {
             if (!fires(t, rng)) continue;
-            if (t.feature == kFeatureFastBet) {
+            if (t.feature == kFeatureFastBet || t.feature == kFeatureFastCall) {
                 pl.fastTell = true, pl.timingTell = t.id;
                 ms *= 0.35;
-            } else if (t.feature == kFeatureSlowBet) {
+            } else if (t.feature == kFeatureSlowBet || t.feature == kFeatureSlowCall) {
                 pl.slowTell = true, pl.timingTell = t.id;
                 ms *= 2.3;
-            } else if (t.feature >= kLineFeatures) {  // expressions and gestures show while thinking
+            } else if (t.feature >= kLineFeatures && t.feature < kSignalFeatures) {
+                // expressions, gestures and stickers show while thinking; bet-sizing
+                // tells are expressed through aggress() instead
                 pl.talk.signals.push_back(signalFor(v.seat, t.feature, aimAt(v)));
                 pl.talk.tells.push_back(t.id);
             }
@@ -144,22 +146,24 @@ public:
                 out.tells.push_back(t.id);
             }
         if (out.signals.empty() && rng.uniform() < mind_.talk * (aggressive ? 1.0 : 0.35))
-            out.signals.push_back(lineSignal(v.seat, characterLine(rng), aimAt(v)));
+            out.signals.push_back(talkSignal(v.seat, aimAt(v), rng));
         return out;
     }
 
     Talk respond(const Signal& said, const PlayerView& v, Rng& rng) override {
         Talk out;
-        if (said.kind != SignalKind::Line || rng.uniform() > std::min(0.9, 0.2 + mind_.talk * 1.4)) return out;
+        if ((said.kind != SignalKind::Line && said.kind != SignalKind::Sticker) ||
+            rng.uniform() > std::min(0.9, 0.2 + mind_.talk * 1.4))
+            return out;
         const auto& me = v.seats[static_cast<std::size_t>(v.seat)];
         if (!me.inHand || me.folded) {
             out.signals.push_back(lineSignal(v.seat, rng.uniform() < 0.5 ? LineKind::Hurry : LineKind::Taunt, said.seat));
             return out;
         }
         strength_ = ownStrength(v, rng);
-        out.signals.push_back(lineSignal(v.seat, characterLine(rng), said.seat));
+        out.signals.push_back(talkSignal(v.seat, said.seat, rng));
         // Someone who reads taunts backwards answers one with a smug look.
-        if (mind_.contrarian && said.code == static_cast<std::uint8_t>(LineKind::Taunt))
+        if (mind_.contrarian && said.kind == SignalKind::Line && said.code == static_cast<std::uint8_t>(LineKind::Taunt))
             out.signals.push_back(Signal{v.seat, -1, SignalKind::Expression, static_cast<std::uint8_t>(Expression::Smug)});
         return out;
     }
@@ -235,6 +239,23 @@ private:
         return any[rng.below(4)];
     }
 
+    // Says something in character: a line, or now and then a sticker with the same intent.
+    Signal talkSignal(int seat, int target, Rng& rng) const {
+        const LineKind line = characterLine(rng);
+        if (rng.uniform() < 0.35) {
+            Sticker st;
+            switch (line) {
+                case LineKind::Confident: st = rng.uniform() < 0.5 ? Sticker::Smug : Sticker::GoodHand; break;
+                case LineKind::Taunt: st = Sticker::Taunt; break;
+                case LineKind::Weak:
+                case LineKind::Plead: st = rng.uniform() < 0.5 ? Sticker::Cry : Sticker::Thinking; break;
+                default: st = Sticker::Question; break;
+            }
+            return Signal{seat, target, SignalKind::Sticker, static_cast<std::uint8_t>(st)};
+        }
+        return lineSignal(seat, line, target);
+    }
+
     static int aimAt(const PlayerView& v) {
         const int a = lastAggressor(v);
         return a != v.seat ? a : -1;
@@ -248,8 +269,12 @@ private:
         if (feature < kLineFeatures) return lineSignal(seat, static_cast<LineKind>(feature), target);
         if (feature < kLineFeatures + kExpressionFeatures)
             return Signal{seat, -1, SignalKind::Expression, static_cast<std::uint8_t>(feature - kLineFeatures)};
-        const auto g = static_cast<std::uint8_t>(feature - kLineFeatures - kExpressionFeatures);
-        return Signal{seat, g == static_cast<std::uint8_t>(Gesture::Stare) ? target : -1, SignalKind::Gesture, g};
+        if (feature < kLineFeatures + kExpressionFeatures + kGestureFeatures) {
+            const auto g = static_cast<std::uint8_t>(feature - kLineFeatures - kExpressionFeatures);
+            return Signal{seat, g == static_cast<std::uint8_t>(Gesture::Stare) ? target : -1, SignalKind::Gesture, g};
+        }
+        const auto st = static_cast<std::uint8_t>(feature - kLineFeatures - kExpressionFeatures - kGestureFeatures);
+        return Signal{seat, target, SignalKind::Sticker, st};
     }
 
     Action decideImpl(const PlayerView& v, Rng& rng, const Mods& m) {
@@ -304,18 +329,18 @@ private:
         if (la.canCheck) {
             const double valueThreshold = (preflop ? 1.8 : 1.25) + 0.5 * (1.0 - aggr);
             if (canAggress && rel > valueThreshold && rng.uniform() < 0.55 + 0.45 * aggr)
-                return aggress(v, la, s, rel > valueThreshold + 0.8 ? 0.75 : 0.55);
+                return aggress(v, la, s, rel > valueThreshold + 0.8 || eq > 0.72 ? Strength::Strong : Strength::Medium, rng);
             double bluffChance = p.bluff * (opps == 1 ? 1.5 : 0.6);
             if (diff_ == Difficulty::Hard && s.yetToAct == 0) bluffChance *= 1.5;  // in position
             bluffChance += m.bluffBoost;
-            if (canAggress && !preflop && rng.uniform() < bluffChance) return aggress(v, la, s, 0.5);
+            if (canAggress && !preflop && rng.uniform() < bluffChance) return aggress(v, la, s, Strength::Weak, rng);
             return Action::check();
         }
 
         // Facing a bet.
         const double raiseThreshold = 1.7 + 0.6 * (1.0 - aggr);
         if (la.canRaise && rel > raiseThreshold && rng.uniform() < 0.4 + 0.5 * aggr)
-            return aggress(v, la, s, 0.8);
+            return aggress(v, la, s, Strength::Strong, rng);
 
         double margin = 0.0;
         switch (diff_) {
@@ -328,7 +353,7 @@ private:
         if (eq >= potOdds + margin) return Action::call();
 
         if (diff_ != Difficulty::Easy && la.canRaise && !preflop && opps == 1 && rng.uniform() < p.bluff * 0.3)
-            return aggress(v, la, s, 0.8);
+            return aggress(v, la, s, Strength::Weak, rng);
         return Action::fold();
     }
 
@@ -338,21 +363,30 @@ private:
         return la.canCall ? Action::call() : Action::check();
     }
 
-    // Bet or raise sized as a fraction of the pot (preflop: standard open / 3-bet sizes).
-    static Action aggress(const PlayerView& v, const LegalActions& la, const Situation& s, double potFraction) {
+    // Bet or raise. How big depends on the character's sizing style (mind profile):
+    // honest sizers bet bigger with strong hands, reversed ones with bluffs, balanced
+    // ones the same either way. Like every tell, it fades with difficulty.
+    Action aggress(const PlayerView& v, const LegalActions& la, const Situation& s, Strength intent, Rng& rng) const {
+        const double k = diff_ == Difficulty::Easy ? 1.0 : diff_ == Difficulty::Normal ? 0.65 : 0.3;
+        const double style = mind_.sizing * k;
+        const double lean = intent == Strength::Strong ? 1.0 : intent == Strength::Weak ? -1.0 : 0.0;
         Chips to;
         if (v.street == Street::Preflop) {
+            const double mult = 2.5 + 0.5 * style * lean + (tilt_ > 0 ? 0.5 : 0.0);
             if (s.raisesThisStreet == 0) {
                 int limpers = 0;
                 for (const Event& e : v.history)
                     if (e.type == EventType::Act && e.street == Street::Preflop && e.action == ActionType::Call) ++limpers;
-                to = v.bigBlind * 5 / 2 + limpers * v.bigBlind;
+                to = static_cast<Chips>(std::llround(static_cast<double>(v.bigBlind) * mult)) + limpers * v.bigBlind;
             } else {
-                to = v.currentBet * 3;
+                to = static_cast<Chips>(std::llround(static_cast<double>(v.currentBet) * (mult + 0.5)));
             }
         } else {
+            double frac = 0.6 + 0.45 * style * lean;
+            if (tilt_ > 0) frac *= 1.25;
+            frac = std::clamp(frac * (0.85 + 0.3 * rng.uniform()), 0.25, 1.6);
             const Chips toCall = la.canRaise ? la.toCall : 0;
-            to = v.currentBet + static_cast<Chips>(std::llround(static_cast<double>(v.pot + toCall) * potFraction));
+            to = v.currentBet + static_cast<Chips>(std::llround(static_cast<double>(v.pot + toCall) * frac));
         }
         // Round to small-blind units so bets read like a person made them.
         const Chips unit = std::max<Chips>(1, v.smallBlind);

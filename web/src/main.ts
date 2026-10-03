@@ -3,7 +3,8 @@ import { Application, Container } from 'pixi.js';
 import './style.css';
 import { CAST, type Character, HERO, characterFor } from './characters';
 import { Director } from './director';
-import { type Difficulty, type Format, Game, loadEngine } from './engine';
+import { type Difficulty, type Format, Game, Sticker, loadEngine } from './engine';
+import { makeSticker } from './fx/stickers';
 import { TableView } from './table/TableView';
 import { DESIGN_H, DESIGN_W } from './table/layout';
 import { timing } from './tween';
@@ -38,6 +39,20 @@ window.addEventListener('resize', fit);
 fit();
 
 const overlay = new Overlay(uiRoot);
+
+// Pictures of the stickers for the talk-panel buttons, rendered once by the canvas.
+overlay.stickerPreviews = await Promise.all(
+  Array.from({ length: 8 }, async (_, i) => {
+    const st = makeSticker(i as Sticker, HERO.color);
+    try {
+      return await app.renderer.extract.base64({ target: st, resolution: 0.5 });
+    } catch {
+      return '';
+    } finally {
+      st.destroy({ children: true });
+    }
+  }),
+);
 const engine = await loadEngine();
 
 let game: Game | null = null;

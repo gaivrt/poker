@@ -5,7 +5,7 @@
 // of table talk (docs/06-mind-games.md). `lines` are the system's own flavour lines,
 // triggered only by public results (winning, being knocked out, going all-in).
 
-import { Expression, Gesture, LineKind } from './engine';
+import { Expression, Gesture, LineKind, Sticker } from './engine';
 
 /** What a character says for each kind of table talk (two variants each). */
 export type TalkLines = Record<LineKind, [string, string]>;
@@ -204,3 +204,15 @@ export function talkLine(c: Character, kind: LineKind): string {
   const pair = c.talk[kind];
   return pair[Math.floor(Math.random() * 2)];
 }
+
+/** 表情包 captions (button labels and the text under each sticker). */
+export const STICKER_LABEL: Record<Sticker, string> = {
+  [Sticker.Smug]: '嘿嘿',
+  [Sticker.Taunt]: '来啊！',
+  [Sticker.Question]: '？？？',
+  [Sticker.Shock]: '！？',
+  [Sticker.Cry]: '呜呜…',
+  [Sticker.Angry]: '哼！',
+  [Sticker.GoodHand]: '好牌！',
+  [Sticker.Thinking]: '嗯……',
+};

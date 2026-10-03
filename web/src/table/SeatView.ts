@@ -1,6 +1,7 @@
 import { ColorMatrixFilter, Container, Graphics, Text } from 'pixi.js';
 import { type Character, EXPRESSION_COLOR, EXPRESSION_LABEL } from '../characters';
 import { Expression } from '../engine';
+import { type Face, makeSticker } from '../fx/stickers';
 import { ease, tween, wait } from '../tween';
 import { CardSprite } from './CardSprite';
 import { FONT, HERO_CARD, OPP_CARD, type SeatLayout, fmt } from './layout';
@@ -35,6 +36,8 @@ export class SeatView extends Container {
   private caption = new Container();
   private captionTimer = 0;
   private thinking: Text;
+  private stickerLayer = new Container();
+  private stickerTimer = 0;
   private thinkStart = 0;
   expression = Expression.Calm;
 
@@ -129,7 +132,12 @@ export class SeatView extends Container {
     this.avatar.eventMode = 'static';
     this.avatar.cursor = 'pointer';
 
-    this.addChild(this.ring, this.avatar, this.exprChip, this.plate, this.tag, ...this.cards, this.betBox, this.handLabel, this.badge, this.thinking, this.caption, this.bubble);
+    // Stickers pop up beside the portrait, on the side facing the table.
+    const toCenter = { x: 960 - x, y: 500 - y };
+    const len = Math.hypot(toCenter.x, toCenter.y) || 1;
+    this.stickerLayer.position.set(x + (toCenter.x / len) * 120, y + (toCenter.y / len) * 70 - (isHero ? 150 : 40));
+
+    this.addChild(this.ring, this.avatar, this.exprChip, this.plate, this.tag, ...this.cards, this.betBox, this.handLabel, this.badge, this.thinking, this.caption, this.bubble, this.stickerLayer);
   }
 
   private drawRing(w: number, h: number) {
@@ -161,6 +169,22 @@ export class SeatView extends Container {
     this.exprChip.addChild(bg, label);
     this.exprChip.scale.set(1.4);
     void tween(this.exprChip.scale, { x: 1, y: 1 }, 220, ease.outBack);
+  }
+
+  /** 表情包: a sticker slapped on the table next to this player for a moment. */
+  showSticker(kind: Face) {
+    this.stickerLayer.removeChildren().forEach((c) => c.destroy({ children: true }));
+    const st = makeSticker(kind, this.char.color);
+    st.rotation = (Math.random() - 0.5) * 0.25;
+    st.scale.set(0.2);
+    this.stickerLayer.addChild(st);
+    const id = ++this.stickerTimer;
+    void tween(st.scale, { x: 0.85, y: 0.85 }, 260, ease.outBack)
+      .then(() => wait(2000))
+      .then(() => (id === this.stickerTimer ? tween(st, { alpha: 0 }, 300) : undefined))
+      .then(() => {
+        if (id === this.stickerTimer && !st.destroyed) st.destroy({ children: true });
+      });
   }
 
   /** A short caption over the portrait for gestures ("摸了摸筹码"). */

@@ -1,7 +1,7 @@
 // HTML overlay on top of the canvas: menus, HUD, action panel, results.
 // It lives in the same 1920x1080 design space as the canvas (scaled together).
 import type { Difficulty, Format, Legal, SignalKindName, Standing } from '../engine';
-import { type Character, EXPRESSION_LABEL, GESTURE_LABEL, LINE_LABEL } from '../characters';
+import { type Character, GESTURE_LABEL, LINE_LABEL, STICKER_LABEL } from '../characters';
 import { fmt } from '../table/layout';
 
 export type Presentation = 'full' | 'simple' | 'off';
@@ -82,7 +82,10 @@ export class Overlay {
   private notes = el('div', 'notes hidden');
   private toastBox = el('div', 'toast hidden');
   private toastTimer = 0;
-  private talkTab: SignalKindName = 'line';
+  private talkTab: 'line' | 'act' = 'line';
+  /** Picture of each sticker (data URLs rendered by the canvas), for the buttons. */
+  stickerPreviews: string[] = [];
+  private nextBox = el('div', 'next-hand hidden');
   private talkSeats: TalkSeat[] = [];
   target = -1;
   private pending: ((c: Choice | null) => void) | null = null;
@@ -93,7 +96,7 @@ export class Overlay {
 
   constructor(root: HTMLElement) {
     this.root = root;
-    root.append(this.hud, this.topRight, this.talk, this.panel, this.pre, this.showPrompt, this.spectate, this.notes, this.toastBox, this.modal);
+    root.append(this.hud, this.topRight, this.talk, this.panel, this.pre, this.showPrompt, this.spectate, this.notes, this.toastBox, this.nextBox, this.modal);
     const notesBtn = el('button', 'round', '笔记');
     const settingsBtn = el('button', 'round', '设置');
     const quitBtn = el('button', 'round', '菜单');
@@ -124,6 +127,7 @@ export class Overlay {
       this.spectate.classList.add('hidden');
       this.notes.classList.add('hidden');
       this.showPrompt.classList.add('hidden');
+      this.nextBox.classList.add('hidden');
       this.target = -1;
     }
   }
@@ -145,22 +149,30 @@ export class Overlay {
   }
 
   private renderTalk() {
-    const tabs: [SignalKindName, string][] = [['line', '台词'], ['expression', '表情'], ['gesture', '动作']];
-    const items: [number, string][] =
-      this.talkTab === 'line' ? Object.entries(LINE_LABEL).map(([k, v]) => [Number(k), v])
-      : this.talkTab === 'expression' ? Object.entries(EXPRESSION_LABEL).map(([k, v]) => [Number(k), v] as [number, string]).filter(([k]) => k !== 4)
-      : Object.entries(GESTURE_LABEL).map(([k, v]) => [Number(k), v]);
+    const tabs: ['line' | 'act', string][] = [['line', '台词'], ['act', '表情动作']];
+    // One button list per tab: [signal kind, code, label, picture?]
+    type Item = [SignalKindName, number, string, string?];
+    const items: Item[] =
+      this.talkTab === 'line'
+        ? Object.entries(LINE_LABEL).map(([k, v]) => ['line', Number(k), v] as Item)
+        : [
+            ...Object.entries(STICKER_LABEL).map(([k, v]) => ['sticker', Number(k), v, this.stickerPreviews[Number(k)]] as Item),
+            ...Object.entries(GESTURE_LABEL).map(([k, v]) => ['gesture', Number(k), v] as Item),
+          ];
     const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
     this.talk.innerHTML = `
       <div class="talk-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === this.talkTab ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="talk-grid">${items.map(([code, l]) => `<button data-code="${code}">${l}</button>`).join('')}</div>
+      <div class="talk-grid ${this.talkTab}">${items
+        .map(([kind, , label, pic], i) =>
+          `<button data-i="${i}" class="${kind}">${pic ? `<img src="${pic}" alt="">` : ''}<span>${label}</span></button>`)
+        .join('')}</div>
       <div class="talk-target"><span>对象</span><button data-seat="-1" class="${this.target < 0 ? 'on' : ''}">全桌</button>${this.talkSeats
         .filter((s) => s.live)
         .map((s) => `<button data-seat="${s.seat}" class="${s.seat === this.target ? 'on' : ''}" style="--c:${hex(s.color)}">${s.name}</button>`)
         .join('')}</div>`;
     this.talk.querySelectorAll<HTMLButtonElement>('.talk-tabs button').forEach((b) =>
       (b.onclick = () => {
-        this.talkTab = b.dataset.tab as SignalKindName;
+        this.talkTab = b.dataset.tab as 'line' | 'act';
         this.renderTalk();
       }));
     this.talk.querySelectorAll<HTMLButtonElement>('.talk-target button').forEach((b) =>
@@ -171,11 +183,41 @@ export class Overlay {
     const grid = this.talk.querySelector('.talk-grid') as HTMLElement;
     grid.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
       (b.onclick = () => {
-        const ok = this.onTalk(this.talkTab, Number(b.dataset.code), this.target);
+        const [kind, code] = items[Number(b.dataset.i)];
+        const ok = this.onTalk(kind, code, this.target);
         if (!ok) this.toast('这条街已经说得够多了，等下一条街吧');
         grid.classList.add('cooldown');
         setTimeout(() => grid.classList.remove('cooldown'), 1200);
       }));
+  }
+
+  // ---------- pacing ----------
+  /** Pause between hands so the result can sink in; "下一手" (or Space) skips ahead. */
+  waitNext(ms: number): Promise<void> {
+    if (ms <= 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const start = performance.now();
+      this.nextBox.classList.remove('hidden');
+      this.nextBox.innerHTML = `<button>下一手 <b></b></button>`;
+      const label = this.nextBox.querySelector('b') as HTMLElement;
+      const done = () => {
+        window.clearInterval(timer);
+        window.removeEventListener('keydown', onKey);
+        this.nextBox.classList.add('hidden');
+        resolve();
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === ' ' || e.key === 'Enter') done();
+      };
+      const timer = window.setInterval(() => {
+        const left = ms - (performance.now() - start);
+        if (left <= 0) done();
+        else label.textContent = `${Math.ceil(left / 1000)}`;
+      }, 100);
+      label.textContent = `${Math.ceil(ms / 1000)}`;
+      (this.nextBox.querySelector('button') as HTMLButtonElement).onclick = done;
+      window.addEventListener('keydown', onKey);
+    });
   }
 
   // ---------- show or muck ----------

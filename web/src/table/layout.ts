@@ -26,11 +26,11 @@ const OPP = { w: 150, h: 190 };
 // Seat 0 is the human; seats go clockwise (the next seat is on the screen's left).
 export const SEATS: SeatLayout[] = [
   { avatar: { x: 645, y: 948 }, avatarSize: { w: 170, h: 215 }, cards: { x: 835, y: 938 }, cardGap: 150, bet: { x: 960, y: 690 }, dealer: { x: 528, y: 870 } },
-  { avatar: { x: 250, y: 610 }, avatarSize: OPP, cards: { x: 372, y: 585 }, cardGap: 30, bet: { x: 480, y: 590 }, dealer: { x: 250, y: 488 } },
+  { avatar: { x: 250, y: 590 }, avatarSize: OPP, cards: { x: 372, y: 565 }, cardGap: 30, bet: { x: 480, y: 575 }, dealer: { x: 250, y: 468 } },
   { avatar: { x: 360, y: 245 }, avatarSize: OPP, cards: { x: 482, y: 235 }, cardGap: 30, bet: { x: 575, y: 365 }, dealer: { x: 455, y: 138 } },
   { avatar: { x: 960, y: 135 }, avatarSize: OPP, cards: { x: 1082, y: 128 }, cardGap: 30, bet: { x: 960, y: 302 }, dealer: { x: 838, y: 62 } },
   { avatar: { x: 1560, y: 245 }, avatarSize: OPP, cards: { x: 1408, y: 235 }, cardGap: 30, bet: { x: 1345, y: 365 }, dealer: { x: 1465, y: 138 } },
-  { avatar: { x: 1670, y: 610 }, avatarSize: OPP, cards: { x: 1518, y: 585 }, cardGap: 30, bet: { x: 1440, y: 590 }, dealer: { x: 1670, y: 488 } },
+  { avatar: { x: 1670, y: 590 }, avatarSize: OPP, cards: { x: 1518, y: 565 }, cardGap: 30, bet: { x: 1440, y: 575 }, dealer: { x: 1670, y: 468 } },
 ];
 
 export const FONT = '"PingFang SC","Hiragino Sans","Noto Sans CJK SC","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';

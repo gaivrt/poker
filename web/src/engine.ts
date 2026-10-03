@@ -4,14 +4,15 @@ import createPokerModule, { type PokerModule, type WasmSession } from './wasm/po
 export type Format = 'quick' | 'standard' | 'classic';
 export type Difficulty = 0 | 1 | 2;
 export type ActionName = 'fold' | 'check' | 'call' | 'bet' | 'raise';
-export type SignalKindName = 'line' | 'expression' | 'gesture';
+export type SignalKindName = 'line' | 'expression' | 'gesture' | 'sticker';
 export type StrengthName = 'weak' | 'medium' | 'strong';
 
 // Codes mirror core/include/poker/talk.hpp.
-export const SIGNAL_KIND: Record<SignalKindName, number> = { line: 0, expression: 1, gesture: 2 };
+export const SIGNAL_KIND: Record<SignalKindName, number> = { line: 0, expression: 1, gesture: 2, sticker: 3 };
 export enum LineKind { Taunt, Weak, Confident, Probe, Hurry, Plead }
 export enum Expression { Calm, Smug, Nervous, Smile, Angry }
 export enum Gesture { RecheckCards, FiddleChips, Stare, Sigh }
+export enum Sticker { Smug, Taunt, Question, Shock, Cry, Angry, GoodHand, Thinking }
 
 export interface Equity {
   seat: number;
@@ -39,7 +40,7 @@ export type GameEvent =
     }
   | { t: 'postSB' | 'postBB' | 'postAnte'; seat: number; amount: number; allIn: boolean }
   | { t: 'hole'; seat: number; cards: string[] }
-  | { t: 'act'; seat: number; action: ActionName; amount: number; total: number; allIn: boolean; street: string; thinkMs?: number }
+  | { t: 'act'; seat: number; action: ActionName; amount: number; total: number; allIn: boolean; street: string; thinkMs?: number; potPct?: number }
   | { t: 'board'; street: string; cards: string[]; equity?: Equity[] }
   | { t: 'uncalled'; seat: number; amount: number }
   | { t: 'runout' }

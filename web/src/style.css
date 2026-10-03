@@ -90,7 +90,7 @@ button { font-family: var(--font); cursor: pointer; }
 /* ---------- Mind games ---------- */
 .top-right { left: 1560px; }
 
-.talk-panel { position: absolute; left: 100px; top: 838px; width: 440px; padding: 12px; border-radius: 14px; background: var(--panel); display: flex; flex-direction: column; gap: 10px; }
+.talk-panel { position: absolute; left: 100px; top: 790px; width: 440px; padding: 12px; border-radius: 14px; background: var(--panel); display: flex; flex-direction: column; gap: 10px; }
 .talk-tabs { display: flex; gap: 8px; }
 .talk-tabs button { flex: 1; height: 40px; border-radius: 10px; border: 2px solid transparent; background: #2b2748; color: var(--muted); font-size: 19px; font-weight: 700; }
 .talk-tabs button.on { border-color: var(--accent); color: var(--ink); background: #3a3560; }
@@ -139,3 +139,11 @@ button { font-family: var(--font); cursor: pointer; }
 .notes-body .tells span { display: inline-block; margin: 4px 6px 0 0; padding: 2px 10px; border-radius: 12px; background: #3a3020; }
 
 .toast { position: absolute; left: 50%; top: 120px; transform: translateX(-50%); padding: 14px 26px; border-radius: 14px; background: #2b2748; border: 2px solid var(--accent); font-size: 22px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+
+.talk-grid.act { grid-template-columns: repeat(4, 1fr); }
+.talk-grid.act button { height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font-size: 15px; padding: 2px; }
+.talk-grid.act button img { height: 32px; width: auto; display: block; }
+.talk-grid.act button.gesture { height: 38px; background: transparent; color: var(--ink); border: 2px solid #6f6a93; font-size: 17px; }
+.next-hand { position: absolute; left: 50%; top: 690px; transform: translateX(-50%); }
+.next-hand button { height: 56px; padding: 0 28px; border-radius: 28px; border: 2px solid var(--accent); background: var(--panel); color: var(--ink); font-size: 22px; font-weight: 800; }
+.next-hand button b { display: inline-block; min-width: 26px; margin-left: 8px; color: var(--accent); }

@@ -18,29 +18,34 @@ constexpr int gest(Gesture g) { return featureOf(SignalKind::Gesture, static_cas
 // 0 紧凶型 凛 · 1 跟注站 团子 · 2 疯狂型 焰 · 3 岩石型 静 · 4 平衡型 葵 · 5 诈唬型 狐
 const std::vector<MindProfile>& profiles() {
     static const std::vector<MindProfile> p = {
-        // 凛: quiet, ignores table talk; bets fast with big hands, stares when bluffing.
-        {0.20, 0.0, 0.25, 3.0, false, 0.15, 0.05, 1300,
+        // Fields: talk, honesty, reactiveness, priorWeight, contrarian, tiltProne, showBluff,
+// thinkMs, sizing, tells.
+// 凛: quiet, ignores table talk; bets fast with big hands, stares when bluffing.
+        {0.20, 0.0, 0.25, 3.0, false, 0.15, 0.05, 1300, 0.0,
          {{1, kFeatureFastBet, 0.70, 0.15, "拿到大牌时下注特别快"},
           {2, gest(Gesture::Stare), 0.10, 0.55, "诈唬时会一直盯着对手"}}},
         // 团子: chatty and honest, believes what people say; fiddles chips with big hands.
-        {0.55, 0.8, 0.80, 6.0, false, 0.40, 0.00, 1700,
+        {0.55, 0.8, 0.80, 6.0, false, 0.40, 0.00, 1700, 0.9,
          {{3, gest(Gesture::FiddleChips), 0.70, 0.08, "拿到大牌时会忍不住摸筹码"},
-          {4, gest(Gesture::Sigh), 0.05, 0.55, "牌不好时会叹气"}}},
+          {4, gest(Gesture::Sigh), 0.05, 0.55, "牌不好时会叹气"},
+          {12, kFeatureBigBet, 0.65, 0.08, "拿到大牌时下注特别大"}}},
         // 焰: loud, provoked by taunts (reads them backwards), tilts easily.
-        {0.75, -0.3, 0.70, 3.0, true, 0.60, 0.35, 900,
+        {0.75, -0.3, 0.70, 3.0, true, 0.60, 0.35, 900, 0.2,
          {{5, line(LineKind::Taunt), 0.20, 0.65, "越是牌烂越爱挑衅"},
           {6, kFeatureSlowBet, 0.60, 0.10, "拿到大牌时会故意长考"}}},
         // 静: almost silent and hard to rattle; looks nervous with monsters.
-        {0.12, 0.4, 0.30, 4.0, false, 0.05, 0.00, 2100,
+        {0.12, 0.4, 0.30, 4.0, false, 0.05, 0.00, 2100, 0.5,
          {{7, expr(Expression::Nervous), 0.55, 0.08, "拿到大牌反而会显得紧张"},
-          {8, gest(Gesture::RecheckCards), 0.08, 0.45, "牌不好时会再看一眼底牌"}}},
+          {8, gest(Gesture::RecheckCards), 0.08, 0.45, "牌不好时会再看一眼底牌"},
+          {14, kFeatureFastCall, 0.10, 0.50, "在追牌时会秒跟"}}},
         // 葵: balanced and a quick learner; one small tell.
-        {0.35, 0.0, 0.50, 1.5, false, 0.15, 0.10, 1500,
+        {0.35, 0.0, 0.50, 1.5, false, 0.15, 0.10, 1500, 0.2,
          {{9, expr(Expression::Smile), 0.45, 0.10, "拿到好牌时嘴角会上扬"}}},
         // 狐: says the opposite of what she has, loves showing bluffs, reads people fast.
-        {0.60, -0.8, 0.60, 1.0, false, 0.20, 0.50, 1300,
+        {0.60, -0.8, 0.60, 1.0, false, 0.20, 0.50, 1300, -0.8,
          {{10, line(LineKind::Weak), 0.55, 0.08, "装可怜的时候往往是大牌"},
-          {11, line(LineKind::Confident), 0.12, 0.50, "嘴上说「稳了」的时候多半在诈唬"}}},
+          {11, line(LineKind::Confident), 0.12, 0.50, "嘴上说「稳了」的时候多半在诈唬"},
+          {13, kFeatureSmallBet, 0.60, 0.12, "下小注的时候往往是大牌"}}},
     };
     return p;
 }
@@ -67,8 +72,12 @@ double naiveStrongProb(int f) {
         0.50, 0.65, 0.35, 0.60, 0.45,
         // gestures: recheck cards, fiddle chips, stare, sigh
         0.45, 0.60, 0.60, 0.30,
-        // fast bet, slow bet
-        0.55, 0.50,
+        // stickers: smug, taunt, question, shock, cry, angry, good hand, thinking
+        0.65, 0.62, 0.45, 0.40, 0.30, 0.45, 0.60, 0.45,
+        // fast bet, slow bet, fast call, slow call
+        0.55, 0.50, 0.40, 0.50,
+        // small bet, big bet, overbet
+        0.45, 0.62, 0.55,
     };
     return table[static_cast<std::size_t>(std::clamp(f, 0, kNumFeatures - 1))];
 }
@@ -119,7 +128,14 @@ Strength classifyHand(const std::array<Card, 2>& hole, const std::vector<Card>& 
         if (mine.category() == boardOnly.category() && mine.slot(0) == boardOnly.slot(0)) return Strength::Weak;
     }
     if (mine.category() >= HandCategory::TwoPair) return Strength::Strong;
-    if (mine.category() == HandCategory::OnePair) return Strength::Medium;
+    if (mine.category() == HandCategory::OnePair) {
+        const int pair = mine.slot(0);
+        int boardMax = 0;
+        for (Card c : board) boardMax = std::max(boardMax, c.rank());
+        if (hole[0].rank() != pair && hole[1].rank() != pair) return Strength::Weak;  // the pair is on the board
+        if (hole[0].rank() == hole[1].rank() && pair > boardMax) return Strength::Strong;  // overpair
+        return pair >= boardMax ? Strength::Medium : Strength::Weak;                      // top pair / lower pair
+    }
     return Strength::Weak;
 }
 

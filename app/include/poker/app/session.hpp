@@ -47,7 +47,7 @@ public:
     // type: "fold" | "check" | "call" | "bet" | "raise"; `to` for bet/raise.
     // thinkMs: how long the human took (thinking time is part of the mind game).
     bool humanAct(const std::string& type, double to, int thinkMs);
-    // Table talk from the human. kind: 0 line, 1 expression, 2 gesture; code per talk.hpp;
+    // Table talk from the human. kind: 0 line, 1 expression, 2 gesture, 3 sticker; code per talk.hpp;
     // target: a seat or -1. False when rate-limited or invalid.
     bool humanSignal(int kind, int code, int target);
     // After winning uncontested the human may show cards: mask 1 = first, 2 = second, 3 = both.
@@ -66,12 +66,18 @@ public:
     std::string standings() const;
 
 private:
-    void collect();
+    // Converts engine events of the current hand into pending JSON (all, or up to index `upTo`).
+    void collect(std::size_t upTo = static_cast<std::size_t>(-1));
     std::string eventJson(const Event& e);
     void emitSignal(const Signal& sig);
     void emitTalk(int seat, const ai::Talk& talk);
     bool inPlay(int seat) const;
-    void recordThink(int seat, int thinkMs, const Action& a);
+    struct Sizing {
+        int feature = -1;  // kFeatureSmallBet / BigBet / OverBet, or -1
+        int pct = 0;       // bet or raise as a percentage of the pot (postflop only)
+    };
+    Sizing sizingOf(const Hand& h, const Action& a) const;
+    void recordAction(int seat, int thinkMs, const Action& a, const Sizing& size);
     void revealVoluntary(int seat, int mask);
     std::string handInfo(int seat, const std::vector<Card>& cards, Strength s) const;
 
@@ -95,10 +101,11 @@ private:
     // --- mind games ---
     std::vector<std::vector<int>> features_;      // per seat: signals + timing tells this hand
     std::vector<std::vector<int>> thinkHistory_;  // per seat: every decision time so far
-    std::vector<std::array<int, 3>> talkCount_;   // per seat: lines / expressions / gestures this street
+    std::vector<std::array<int, 4>> talkCount_;   // per seat: lines / expressions / gestures / stickers this street
     Street talkStreet_ = Street::Preflop;
     std::vector<TellUse> tellUses_;
     std::vector<int> actThink_;       // thinking time of each action this hand, in order
+    std::vector<int> actSize_;        // its size in % of the pot (0 when not a postflop bet/raise)
     std::size_t actConverted_ = 0;
     std::optional<ai::Plan> plan_;
     std::size_t planKey_ = 0;         // engine event count when plan_ was made
