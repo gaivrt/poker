@@ -1,5 +1,6 @@
 import { ColorMatrixFilter, Container, Graphics, Text } from 'pixi.js';
-import type { Character } from '../characters';
+import { type Character, EXPRESSION_COLOR, EXPRESSION_LABEL } from '../characters';
+import { Expression } from '../engine';
 import { ease, tween, wait } from '../tween';
 import { CardSprite } from './CardSprite';
 import { FONT, HERO_CARD, OPP_CARD, type SeatLayout, fmt } from './layout';
@@ -30,6 +31,12 @@ export class SeatView extends Container {
   private bubbleTimer = 0;
   private badge = new Container();
   private handLabel: Text;
+  private exprChip = new Container();
+  private caption = new Container();
+  private captionTimer = 0;
+  private thinking: Text;
+  private thinkStart = 0;
+  expression = Expression.Calm;
 
   stack = 0;
   bet = 0;
@@ -112,7 +119,17 @@ export class SeatView extends Container {
     this.badge.position.set(x, y - h / 2 - 26);
     this.badge.visible = false;
 
-    this.addChild(this.ring, this.avatar, this.plate, this.tag, ...this.cards, this.betBox, this.handLabel, this.badge, this.bubble);
+    this.exprChip.position.set(x - w / 2 + 6, y - h / 2 + 6);
+    this.caption.position.set(x, y + h * 0.08);
+    this.thinking = new Text({ text: '', style: { fontFamily: FONT, fontSize: 20, fontWeight: '700', fill: 0xffe08a, stroke: { color: 0x000000, width: 4 } } });
+    this.thinking.anchor.set(0.5);
+    this.thinking.position.set(x, y - h / 2 - 20);
+
+    // Tap a portrait to aim table talk at that player.
+    this.avatar.eventMode = 'static';
+    this.avatar.cursor = 'pointer';
+
+    this.addChild(this.ring, this.avatar, this.exprChip, this.plate, this.tag, ...this.cards, this.betBox, this.handLabel, this.badge, this.thinking, this.caption, this.bubble);
   }
 
   private drawRing(w: number, h: number) {
@@ -121,6 +138,66 @@ export class SeatView extends Container {
 
   tick(t: number) {
     if (this.ring.visible) this.ring.alpha = 0.55 + 0.45 * Math.sin(t / 180);
+    if (this.thinkStart) this.thinking.text = `思考中 ${((performance.now() - this.thinkStart) / 1000).toFixed(1)}s`;
+  }
+
+  /** Shows a running "thinking" clock: how long a player takes is part of the read. */
+  startThinking() {
+    this.thinkStart = performance.now();
+  }
+
+  stopThinking() {
+    this.thinkStart = 0;
+    this.thinking.text = '';
+  }
+
+  setExpression(e: Expression) {
+    this.expression = e;
+    this.exprChip.removeChildren().forEach((c) => c.destroy());
+    if (e === Expression.Calm) return;
+    const label = new Text({ text: EXPRESSION_LABEL[e], style: { fontFamily: FONT, fontSize: 18, fontWeight: '800', fill: 0xffffff } });
+    label.position.set(10, 4);
+    const bg = new Graphics().roundRect(0, 0, label.width + 20, 30, 15).fill(EXPRESSION_COLOR[e]).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+    this.exprChip.addChild(bg, label);
+    this.exprChip.scale.set(1.4);
+    void tween(this.exprChip.scale, { x: 1, y: 1 }, 220, ease.outBack);
+  }
+
+  /** A short caption over the portrait for gestures ("摸了摸筹码"). */
+  showCaption(text: string) {
+    this.caption.removeChildren().forEach((c) => c.destroy());
+    const label = new Text({ text, style: { fontFamily: FONT, fontSize: 19, fontWeight: '700', fill: 0xffffff } });
+    label.anchor.set(0.5);
+    const bg = new Graphics().roundRect(-label.width / 2 - 12, -17, label.width + 24, 34, 17).fill({ color: 0x0b0a16, alpha: 0.85 });
+    this.caption.addChild(bg, label);
+    this.caption.alpha = 0;
+    this.caption.y = this.L.avatar.y + this.L.avatarSize.h * 0.08 + 12;
+    const id = ++this.captionTimer;
+    void tween(this.caption, { alpha: 1, y: this.caption.y - 12 }, 200)
+      .then(() => wait(1700))
+      .then(() => (id === this.captionTimer ? tween(this.caption, { alpha: 0 }, 300) : undefined));
+  }
+
+  async recheckCards() {
+    const ys = this.cards.map((c) => c.y);
+    await Promise.all(this.cards.map((c, i) => (c.visible ? tween(c, { y: ys[i] - 16 }, 160) : Promise.resolve())));
+    await wait(250);
+    await Promise.all(this.cards.map((c, i) => (c.visible ? tween(c, { y: ys[i] }, 160) : Promise.resolve())));
+  }
+
+  async fiddleChips() {
+    const x0 = this.stackText.x;
+    for (let i = 0; i < 6; i++) {
+      this.stackText.x = x0 + (i % 2 ? -4 : 4);
+      await wait(60);
+    }
+    this.stackText.x = x0;
+  }
+
+  async sigh() {
+    const y0 = this.avatar.y;
+    await tween(this.avatar, { y: y0 + 8 }, 300);
+    await tween(this.avatar, { y: y0 }, 400);
   }
 
   setStack(n: number) {
@@ -176,6 +253,8 @@ export class SeatView extends Container {
     this.setBet(0);
     this.setActive(false);
     this.avatar.alpha = 1;
+    this.stopThinking();
+    if (this.expression !== Expression.Angry) this.setExpression(Expression.Calm);
     this.folded = false;
     this.allIn = false;
     this.showHand(null);
@@ -227,9 +306,9 @@ export class SeatView extends Container {
   }
 
   /** Speech bubble above the portrait. Never driven by hidden information. */
-  say(text: string, ms = 1800) {
+  say(text: string, ms = 1800, toName?: string) {
     this.bubble.removeChildren().forEach((c) => c.destroy());
-    const label = new Text({ text, style: { fontFamily: FONT, fontSize: 22, fill: 0x22223a, wordWrap: true, wordWrapWidth: 260, breakWords: true } });
+    const label = new Text({ text: toName ? `→${toName}  ${text}` : text, style: { fontFamily: FONT, fontSize: 22, fill: 0x22223a, wordWrap: true, wordWrapWidth: 280, breakWords: true } });
     const pw = label.width + 28;
     const ph = label.height + 18;
     const { x, y } = this.L.avatar;

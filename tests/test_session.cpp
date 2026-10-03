@@ -19,7 +19,7 @@ TEST(session_plays_full_games) {
             all += s.drainEvents();
             if (s.isHumanTurn()) {
                 const std::string la = s.legal();
-                CHECK(s.humanAct(contains(la, "\"canCheck\":true") ? "check" : "call", 0));
+                CHECK(s.humanAct(contains(la, "\"canCheck\":true") ? "check" : "call", 0, 3000));
             } else if (s.handRunning()) {
                 CHECK(s.stepBot());
             } else {
@@ -47,10 +47,10 @@ TEST(session_rejects_out_of_turn_and_bad_actions) {
     s.startHand();
     while (s.handRunning() && !s.isHumanTurn()) s.stepBot();
     if (s.isHumanTurn()) {
-        CHECK(!s.humanAct("raise", 1));   // below the minimum
-        CHECK(!s.humanAct("dance", 0));   // unknown action
+        CHECK(!s.humanAct("raise", 1, 1000));   // below the minimum
+        CHECK(!s.humanAct("dance", 0, 1000));   // unknown action
     } else {
-        CHECK(!s.humanAct("fold", 0));    // hand ended before our turn
+        CHECK(!s.humanAct("fold", 0, 1000));    // hand ended before our turn
     }
 }
 

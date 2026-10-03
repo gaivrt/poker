@@ -5,8 +5,12 @@ export interface WasmSession {
   isHumanTurn(): boolean;
   toAct(): number;
   startHand(): void;
+  prepareBot(): string;
   stepBot(): boolean;
-  humanAct(type: string, to: number): boolean;
+  humanAct(type: string, to: number, thinkMs: number): boolean;
+  humanSignal(kind: number, code: number, target: number): boolean;
+  canHumanShow(): boolean;
+  humanShow(mask: number): boolean;
   finishHand(): void;
   drainEvents(): string;
   state(): string;

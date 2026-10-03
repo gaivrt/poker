@@ -1,7 +1,7 @@
 // HTML overlay on top of the canvas: menus, HUD, action panel, results.
 // It lives in the same 1920x1080 design space as the canvas (scaled together).
-import type { Difficulty, Format, Legal, Standing } from '../engine';
-import type { Character } from '../characters';
+import type { Difficulty, Format, Legal, SignalKindName, Standing } from '../engine';
+import { type Character, EXPRESSION_LABEL, GESTURE_LABEL, LINE_LABEL } from '../characters';
 import { fmt } from '../table/layout';
 
 export type Presentation = 'full' | 'simple' | 'off';
@@ -12,6 +12,17 @@ export interface Settings {
 export interface Choice {
   type: 'fold' | 'check' | 'call' | 'bet' | 'raise';
   to: number;
+  thinkMs: number;
+}
+export interface Clock {
+  perActionMs: number;
+  bankMs: number; // shared across the game; ask() spends from it
+}
+export interface TalkSeat {
+  seat: number;
+  name: string;
+  color: number;
+  live: boolean;
 }
 export interface BetContext {
   pot: number;
@@ -56,6 +67,9 @@ export class Overlay {
   onSettings: () => void = () => {};
   onQuit: () => void = () => {};
   onSkip: () => void = () => {};
+  /** Sends table talk; returns false when it was refused (said too much this street). */
+  onTalk: (kind: SignalKindName, code: number, target: number) => boolean = () => false;
+  onNotes: () => string = () => '';
 
   private hud = el('div', 'hud');
   private topRight = el('div', 'top-right');
@@ -63,19 +77,30 @@ export class Overlay {
   private pre = el('div', 'pre-actions hidden');
   private spectate = el('div', 'spectate hidden');
   private modal = el('div', 'modal hidden');
+  private talk = el('div', 'talk-panel hidden');
+  private showPrompt = el('div', 'show-prompt hidden');
+  private notes = el('div', 'notes hidden');
+  private toastBox = el('div', 'toast hidden');
+  private toastTimer = 0;
+  private talkTab: SignalKindName = 'line';
+  private talkSeats: TalkSeat[] = [];
+  target = -1;
   private pending: ((c: Choice | null) => void) | null = null;
+  private clockTimer = 0;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   preCheckFold = false;
   preCallAny = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
-    root.append(this.hud, this.topRight, this.panel, this.pre, this.spectate, this.modal);
+    root.append(this.hud, this.topRight, this.talk, this.panel, this.pre, this.showPrompt, this.spectate, this.notes, this.toastBox, this.modal);
+    const notesBtn = el('button', 'round', '笔记');
     const settingsBtn = el('button', 'round', '设置');
     const quitBtn = el('button', 'round', '菜单');
+    notesBtn.onclick = () => this.toggleNotes();
     settingsBtn.onclick = () => this.openSettings();
     quitBtn.onclick = () => this.confirmQuit();
-    this.topRight.append(settingsBtn, quitBtn);
+    this.topRight.append(notesBtn, settingsBtn, quitBtn);
     this.pre.innerHTML = `
       <label><input type="checkbox" data-k="cf"> 自动过牌/弃牌</label>
       <label><input type="checkbox" data-k="ca"> 跟任何注</label>`;
@@ -93,10 +118,103 @@ export class Overlay {
     this.hud.classList.toggle('hidden', !on);
     this.topRight.classList.toggle('hidden', !on);
     this.pre.classList.toggle('hidden', !on);
+    this.talk.classList.toggle('hidden', !on);
     if (!on) {
       this.panel.classList.add('hidden');
       this.spectate.classList.add('hidden');
+      this.notes.classList.add('hidden');
+      this.showPrompt.classList.add('hidden');
+      this.target = -1;
     }
+  }
+
+  // ---------- table talk ----------
+  setTalkSeats(seats: TalkSeat[]) {
+    this.talkSeats = seats;
+    if (this.target >= 0 && !seats.find((s) => s.seat === this.target && s.live)) this.target = -1;
+    this.renderTalk();
+  }
+
+  setTarget(seat: number) {
+    this.target = this.target === seat ? -1 : seat;
+    this.renderTalk();
+  }
+
+  hideTalk() {
+    this.talk.classList.add('hidden');
+  }
+
+  private renderTalk() {
+    const tabs: [SignalKindName, string][] = [['line', '台词'], ['expression', '表情'], ['gesture', '动作']];
+    const items: [number, string][] =
+      this.talkTab === 'line' ? Object.entries(LINE_LABEL).map(([k, v]) => [Number(k), v])
+      : this.talkTab === 'expression' ? Object.entries(EXPRESSION_LABEL).map(([k, v]) => [Number(k), v] as [number, string]).filter(([k]) => k !== 4)
+      : Object.entries(GESTURE_LABEL).map(([k, v]) => [Number(k), v]);
+    const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+    this.talk.innerHTML = `
+      <div class="talk-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === this.talkTab ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="talk-grid">${items.map(([code, l]) => `<button data-code="${code}">${l}</button>`).join('')}</div>
+      <div class="talk-target"><span>对象</span><button data-seat="-1" class="${this.target < 0 ? 'on' : ''}">全桌</button>${this.talkSeats
+        .filter((s) => s.live)
+        .map((s) => `<button data-seat="${s.seat}" class="${s.seat === this.target ? 'on' : ''}" style="--c:${hex(s.color)}">${s.name}</button>`)
+        .join('')}</div>`;
+    this.talk.querySelectorAll<HTMLButtonElement>('.talk-tabs button').forEach((b) =>
+      (b.onclick = () => {
+        this.talkTab = b.dataset.tab as SignalKindName;
+        this.renderTalk();
+      }));
+    this.talk.querySelectorAll<HTMLButtonElement>('.talk-target button').forEach((b) =>
+      (b.onclick = () => {
+        this.target = Number(b.dataset.seat);
+        this.renderTalk();
+      }));
+    const grid = this.talk.querySelector('.talk-grid') as HTMLElement;
+    grid.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
+      (b.onclick = () => {
+        const ok = this.onTalk(this.talkTab, Number(b.dataset.code), this.target);
+        if (!ok) this.toast('这条街已经说得够多了，等下一条街吧');
+        grid.classList.add('cooldown');
+        setTimeout(() => grid.classList.remove('cooldown'), 1200);
+      }));
+  }
+
+  // ---------- show or muck ----------
+  askShow(cards: string[]): Promise<0 | 1 | 2 | 3> {
+    return new Promise((resolve) => {
+      this.showPrompt.classList.remove('hidden');
+      this.showPrompt.innerHTML = `<div class="q">赢下底池。要亮牌给他们看吗？</div>
+        <div class="row4"><button data-m="0" class="ghost-s">不亮</button><button data-m="1">亮 ${cards[0]}</button>
+        <button data-m="2">亮 ${cards[1]}</button><button data-m="3" class="hot">全部亮出</button></div><div class="bar"><i></i></div>`;
+      let done = false;
+      const finish = (m: 0 | 1 | 2 | 3) => {
+        if (done) return;
+        done = true;
+        this.showPrompt.classList.add('hidden');
+        resolve(m);
+      };
+      this.showPrompt.querySelectorAll<HTMLButtonElement>('button').forEach((b) => (b.onclick = () => finish(Number(b.dataset.m) as 0 | 1 | 2 | 3)));
+      setTimeout(() => finish(0), 4000);
+    });
+  }
+
+  // ---------- notes & toasts ----------
+  private toggleNotes() {
+    const open = this.notes.classList.contains('hidden');
+    this.notes.classList.toggle('hidden', !open);
+    if (open) this.refreshNotes();
+  }
+
+  refreshNotes() {
+    if (this.notes.classList.contains('hidden')) return;
+    this.notes.innerHTML = `<div class="notes-head"><b>读人笔记</b><button class="x">关闭</button></div><div class="notes-body">${this.onNotes()}</div>`;
+    (this.notes.querySelector('.x') as HTMLButtonElement).onclick = () => this.notes.classList.add('hidden');
+  }
+
+  toast(text: string) {
+    this.toastBox.textContent = text;
+    this.toastBox.classList.remove('hidden');
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toastBox.classList.add('hidden'), 2600);
   }
 
   resetPreActions() {
@@ -210,13 +328,22 @@ export class Overlay {
   }
 
   // ---------- action panel ----------
-  ask(legal: Legal, ctx: BetContext): Promise<Choice | null> {
-    // Pre-actions answer immediately.
-    if (this.preCheckFold) return Promise.resolve(legal.canCheck ? { type: 'check', to: 0 } : { type: 'fold', to: 0 });
-    if (this.preCallAny) return Promise.resolve(legal.canCall ? { type: 'call', to: 0 } : { type: 'check', to: 0 });
+  ask(legal: Legal, ctx: BetContext, clock: Clock): Promise<Choice | null> {
+    // Pre-actions answer immediately (and that instant answer is itself a timing tell).
+    if (this.preCheckFold) return Promise.resolve(legal.canCheck ? { type: 'check', to: 0, thinkMs: 300 } : { type: 'fold', to: 0, thinkMs: 300 });
+    if (this.preCallAny) return Promise.resolve(legal.canCall ? { type: 'call', to: 0, thinkMs: 300 } : { type: 'check', to: 0, thinkMs: 300 });
 
+    const started = performance.now();
     return new Promise((resolve) => {
-      this.pending = resolve;
+      this.pending = (c) => {
+        window.clearInterval(this.clockTimer);
+        if (c) {
+          const used = performance.now() - started;
+          clock.bankMs = Math.max(0, clock.bankMs - Math.max(0, used - clock.perActionMs));
+          c.thinkMs = used;
+        }
+        resolve(c);
+      };
       const canAggro = legal.canBet || legal.canRaise;
       const minTo = legal.minTo ?? 0;
       const maxTo = legal.maxTo ?? 0;
@@ -238,6 +365,7 @@ export class Overlay {
 
       const verb = legal.canBet ? '下注' : '加注到';
       this.panel.innerHTML = `
+        <div class="clock"></div>
         ${canAggro ? `<div class="presets">${presets.map((p, i) => `<button data-i="${i}">${p.label}</button>`).join('')}</div>
         <div class="slider-row"><input type="range" min="${minTo}" max="${maxTo}" step="${unit}" value="${clamp(minTo)}">
           <input type="number" class="amount" min="${minTo}" max="${maxTo}" step="${unit}" value="${clamp(minTo)}"></div>` : ''}
@@ -247,6 +375,7 @@ export class Overlay {
           <button class="act raise" ${canAggro ? '' : 'disabled'}><span class="rl"></span><kbd>R</kbd></button>
         </div>`;
       this.panel.classList.remove('hidden');
+      this.pre.classList.add('hidden');
 
       const range = this.panel.querySelector('input[type=range]') as HTMLInputElement | null;
       const num = this.panel.querySelector('input.amount') as HTMLInputElement | null;
@@ -265,9 +394,28 @@ export class Overlay {
         b.addEventListener('click', () => setAmount(presets[Number((b as HTMLElement).dataset.i)].to)));
 
       const finish = (c: Choice) => this.resolve(c);
-      const doFold = () => legal.canFold && finish({ type: 'fold', to: 0 });
-      const doCall = () => finish(legal.canCheck ? { type: 'check', to: 0 } : { type: 'call', to: 0 });
-      const doRaise = () => canAggro && finish({ type: legal.canBet ? 'bet' : 'raise', to: amount });
+      const doFold = () => legal.canFold && finish({ type: 'fold', to: 0, thinkMs: 0 });
+      const doCall = () => finish(legal.canCheck ? { type: 'check', to: 0, thinkMs: 0 } : { type: 'call', to: 0, thinkMs: 0 });
+      const doRaise = () => canAggro && finish({ type: legal.canBet ? 'bet' : 'raise', to: amount, thinkMs: 0 });
+
+      // Action clock: per-action time, then the game's time bank, then check/fold.
+      const clockEl = this.panel.querySelector('.clock') as HTMLElement;
+      const tickClock = () => {
+        const used = performance.now() - started;
+        const left = clock.perActionMs - used;
+        const bankLeft = clock.bankMs + Math.min(0, left);
+        if (left > 0) {
+          clockEl.textContent = `⏱ ${Math.ceil(left / 1000)} 秒`;
+          clockEl.className = `clock${left < 5000 ? ' low' : ''}`;
+        } else if (bankLeft > 0) {
+          clockEl.textContent = `时间银行 ${Math.ceil(bankLeft / 1000)} 秒`;
+          clockEl.className = 'clock bank';
+        } else {
+          finish(legal.canCheck ? { type: 'check', to: 0, thinkMs: 0 } : { type: 'fold', to: 0, thinkMs: 0 });
+        }
+      };
+      tickClock();
+      this.clockTimer = window.setInterval(tickClock, 200);
       (this.panel.querySelector('.fold') as HTMLButtonElement).onclick = doFold;
       (this.panel.querySelector('.call') as HTMLButtonElement).onclick = doCall;
       (this.panel.querySelector('.raise') as HTMLButtonElement).onclick = doRaise;
@@ -284,6 +432,8 @@ export class Overlay {
 
   private resolve(c: Choice | null) {
     this.panel.classList.add('hidden');
+    if (!this.spectate.classList.contains('hidden')) this.pre.classList.add('hidden');
+    else if (!this.hud.classList.contains('hidden')) this.pre.classList.remove('hidden');
     if (this.keyHandler) window.removeEventListener('keydown', this.keyHandler);
     this.keyHandler = null;
     const p = this.pending;

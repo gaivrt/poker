@@ -1,5 +1,7 @@
 #include "poker/app/session.hpp"
 
+#include "poker/ai/mind.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -94,6 +96,26 @@ const char* actionName(ActionType a) {
     }
     return "?";
 }
+
+const char* kindName(SignalKind k) {
+    switch (k) {
+        case SignalKind::Line: return "line";
+        case SignalKind::Expression: return "expression";
+        case SignalKind::Gesture: return "gesture";
+    }
+    return "?";
+}
+
+const char* strengthName(Strength s) {
+    switch (s) {
+        case Strength::Weak: return "weak";
+        case Strength::Medium: return "medium";
+        case Strength::Strong: return "strong";
+    }
+    return "?";
+}
+
+bool aggressive(const Action& a) { return a.type == ActionType::Bet || a.type == ActionType::Raise; }
 
 TournamentConfig configFor(const std::string& format) {
     if (format == "quick") return quickFixedHandsConfig();
@@ -218,6 +240,18 @@ void Session::startHand() {
     revealed_.clear();
     isRevealed_.assign(static_cast<std::size_t>(h.numSeats()), false);
     revealed_.resize(static_cast<std::size_t>(h.numSeats()));
+    const auto n = static_cast<std::size_t>(h.numSeats());
+    features_.assign(n, {});
+    if (thinkHistory_.size() != n) thinkHistory_.assign(n, {});
+    talkCount_.assign(n, {0, 0, 0});
+    talkStreet_ = Street::Preflop;
+    tellUses_.clear();
+    actThink_.clear();
+    actConverted_ = 0;
+    plan_.reset();
+    fullyShown_.assign(n, false);
+    humanShowed_ = false;
+    provoked_.assign(n, false);
 
     const BlindLevel& lv = tournament_->level();
     Json j;
@@ -233,22 +267,47 @@ void Session::startHand() {
     collect();
 }
 
+std::string Session::prepareBot() {
+    if (!handRunning()) return "{}";
+    Hand& h = *tournament_->currentHand();
+    const int s = h.toAct();
+    if (s == kHuman) return "{}";
+    if (!plan_ || planKey_ != h.events().size()) {
+        plan_ = bots_[static_cast<std::size_t>(s)]->plan(h.view(s), *rng_);
+        planKey_ = h.events().size();
+        emitTalk(s, plan_->talk);
+    }
+    Json j;
+    j.open('{').key("seat").num(s).key("thinkMs").num(plan_->thinkMs).close('}');
+    return j.done();
+}
+
 bool Session::stepBot() {
     if (!handRunning()) return false;
     Hand& h = *tournament_->currentHand();
     const int s = h.toAct();
     if (s == kHuman) return false;
-    const Action a = bots_[static_cast<std::size_t>(s)]->decide(h.view(s), *rng_);
+    if (!plan_ || planKey_ != h.events().size()) prepareBot();
+    const ai::Plan plan = *plan_;
+    plan_.reset();
+    auto& bot = *bots_[static_cast<std::size_t>(s)];
+    const PlayerView before = h.view(s);
+    Action a = bot.decideTalk(before, ai::TalkView{features_}, *rng_);
+    if (!h.legal().canFold && a.type == ActionType::Fold) a = Action::check();
     if (!h.act(a)) {
         // A bot should never pick an illegal move; fall back to the safest legal one.
         const LegalActions la = h.legal();
-        h.act(la.canCheck ? Action::check() : Action::fold());
+        a = la.canCheck ? Action::check() : Action::fold();
+        h.act(a);
     }
+    recordThink(s, plan.thinkMs, a);
+    if (plan.timingTell >= 0 && aggressive(a)) tellUses_.push_back({s, plan.timingTell});
     collect();
+    emitTalk(s, bot.afterAction(before, a, *rng_));
     return true;
 }
 
-bool Session::humanAct(const std::string& type, double to) {
+bool Session::humanAct(const std::string& type, double to, int thinkMs) {
     if (!isHumanTurn()) return false;
     Hand& h = *tournament_->currentHand();
     Action a;
@@ -260,16 +319,171 @@ bool Session::humanAct(const std::string& type, double to) {
     else if (type == "raise") a = Action::raise(amount);
     else return false;
     if (!h.act(a)) return false;
+    recordThink(kHuman, std::max(0, thinkMs), a);  // before collect(): the act event carries it
     collect();
+    return true;
+}
+
+void Session::recordThink(int seat, int thinkMs, const Action& a) {
+    auto& hist = thinkHistory_[static_cast<std::size_t>(seat)];
+    // A bet much faster or slower than this player's usual pace is a timing tell.
+    if (aggressive(a) && hist.size() >= 4) {
+        std::vector<int> sorted(hist.end() - static_cast<std::ptrdiff_t>(std::min<std::size_t>(hist.size(), 20)), hist.end());
+        std::sort(sorted.begin(), sorted.end());
+        const double median = sorted[sorted.size() / 2];
+        if (thinkMs < 0.55 * median) features_[static_cast<std::size_t>(seat)].push_back(kFeatureFastBet);
+        else if (thinkMs > 1.8 * median) features_[static_cast<std::size_t>(seat)].push_back(kFeatureSlowBet);
+    }
+    hist.push_back(thinkMs);
+    actThink_.push_back(thinkMs);
+}
+
+bool Session::inPlay(int seat) const {
+    const Hand* h = tournament_->currentHand();
+    return h && !h->complete() && h->seat(seat).inHand && !h->seat(seat).folded;
+}
+
+void Session::emitSignal(const Signal& sig) {
+    Json j;
+    j.open('{').key("t").str("signal").key("seat").num(sig.seat).key("kind").str(kindName(sig.kind));
+    j.key("code").num(sig.code).key("target").num(sig.target).close('}');
+    pending_.push_back(j.done());
+    if (inPlay(sig.seat)) features_[static_cast<std::size_t>(sig.seat)].push_back(featureOf(sig.kind, sig.code));
+}
+
+void Session::emitTalk(int seat, const ai::Talk& talk) {
+    for (Signal sig : talk.signals) {
+        sig.seat = seat;
+        emitSignal(sig);
+    }
+    for (int t : talk.tells) tellUses_.push_back({seat, t});
+}
+
+bool Session::humanSignal(int kind, int code, int target) {
+    const Hand* h = tournament_->currentHand();
+    if (!h || handSettled_ || kind < 0 || kind > 2) return false;
+    const auto k = static_cast<SignalKind>(kind);
+    if (code < 0 || code >= codeCount(k)) return false;
+    if (target < -1 || target >= h->numSeats() || target == kHuman) return false;
+    if (tournament_->stacks()[kHuman] == 0 && !h->seat(kHuman).inHand) return false;  // out of the game
+
+    // Rate limit per street: 3 lines, 4 expressions, 3 gestures.
+    if (h->street() != talkStreet_) {
+        talkStreet_ = h->street();
+        for (auto& c : talkCount_) c = {0, 0, 0};
+    }
+    static constexpr int kLimit[3] = {3, 4, 3};
+    auto& count = talkCount_[kHuman][static_cast<std::size_t>(kind)];
+    if (count >= kLimit[kind]) return false;
+    ++count;
+
+    const Signal sig{kHuman, target, k, static_cast<std::uint8_t>(code)};
+    emitSignal(sig);
+
+    // Someone answers a line: the one it was aimed at, else a bot still in the hand.
+    if (k == SignalKind::Line) {
+        int responder = target;
+        if (responder < 0) {
+            std::vector<int> candidates;
+            for (int s = 1; s < h->numSeats(); ++s)
+                if (inPlay(s)) candidates.push_back(s);
+            if (!candidates.empty()) responder = candidates[static_cast<std::size_t>(rng_->below(candidates.size()))];
+        }
+        if (responder > 0 && h->seat(responder).inHand)
+            emitTalk(responder, bots_[static_cast<std::size_t>(responder)]->respond(sig, h->view(responder), *rng_));
+    }
+    return true;
+}
+
+bool Session::canHumanShow() const {
+    const Hand* h = tournament_->currentHand();
+    if (!h || !h->complete() || handSettled_ || humanShowed_ || h->wentToShowdown()) return false;
+    return h->winnings()[kHuman] > 0;
+}
+
+std::string Session::handInfo(int seat, const std::vector<Card>& shown, Strength st) const {
+    const Hand& h = *tournament_->currentHand();
+    Json j;
+    j.open('{').key("t").str("voluntaryShow").key("seat").num(seat).key("cards");
+    cards(j, shown);
+    if (shown.size() == 2) {
+        j.key("strength").str(strengthName(st));
+        if (h.board().size() >= 3) {
+            std::vector<Card> all(h.board());
+            all.insert(all.end(), shown.begin(), shown.end());
+            j.key("hand").str(describeZh(evaluate(all)));
+        }
+    }
+    j.close('}');
+    return j.done();
+}
+
+void Session::revealVoluntary(int seat, int mask) {
+    const Hand& h = *tournament_->currentHand();
+    const auto& hole = h.seat(seat).hole;
+    std::vector<Card> shown;
+    if (mask & 1) shown.push_back(hole[0]);
+    if (mask & 2) shown.push_back(hole[1]);
+    const Strength st = ai::classifyHand(hole, h.board());
+    pending_.push_back(handInfo(seat, shown, st));
+    if (mask == 3) {
+        fullyShown_[static_cast<std::size_t>(seat)] = true;
+        // Showing a bluff to the players who folded to it can put them on tilt.
+        if (st == Strength::Weak)
+            for (int s = 0; s < h.numSeats(); ++s)
+                if (s != seat && h.seat(s).inHand && h.seat(s).folded) provoked_[static_cast<std::size_t>(s)] = true;
+    }
+}
+
+bool Session::humanShow(int mask) {
+    if (!canHumanShow() || mask < 1 || mask > 3) return false;
+    humanShowed_ = true;
+    revealVoluntary(kHuman, mask);
     return true;
 }
 
 void Session::finishHand() {
     Hand* h = tournament_->currentHand();
     if (!h || !h->complete() || handSettled_) return;
+    const int n = h->numSeats();
+
+    // A bot that won without a showdown may show its bluff.
+    if (!h->wentToShowdown())
+        for (int s = 1; s < n; ++s)
+            if (h->winnings()[static_cast<std::size_t>(s)] > 0 &&
+                bots_[static_cast<std::size_t>(s)]->wantsToShow(h->view(s), *rng_))
+                revealVoluntary(s, 3);
+
+    // Everyone at the table learns from every hand that was turned face up.
+    for (int r = 0; r < n; ++r) {
+        const bool shown = (h->wentToShowdown() && isRevealed_[static_cast<std::size_t>(r)]) || fullyShown_[static_cast<std::size_t>(r)];
+        if (!shown) continue;
+        const Strength st = ai::classifyHand(h->seat(r).hole, h->board());
+        for (int b = 1; b < n; ++b)
+            if (b != r) bots_[static_cast<std::size_t>(b)]->learn(r, features_[static_cast<std::size_t>(r)], st);
+        // A bot's tell that matched its revealed hand: the player may have spotted it.
+        std::vector<int> seen;
+        for (const auto& u : tellUses_) {
+            if (u.seat != r || std::find(seen.begin(), seen.end(), u.tell) != seen.end()) continue;
+            const ai::Tell* t = ai::findTell(u.tell);
+            if (!t || st == Strength::Medium || t->meansStrong() != (st == Strength::Strong)) continue;
+            seen.push_back(u.tell);
+            Json j;
+            j.open('{').key("t").str("tellSeen").key("seat").num(r).key("tell").num(u.tell).key("text").str(t->textZh).close('}');
+            pending_.push_back(j.done());
+        }
+    }
+
     const std::vector<Chips> before = tournament_->stacks();
     tournament_->finishHand();
     handSettled_ = true;
+
+    // Big losses (or being shown a bluff) can tilt a bot.
+    for (int s = 1; s < n; ++s) {
+        const auto i = static_cast<std::size_t>(s);
+        if (before[i] == 0) continue;
+        emitTalk(s, bots_[i]->afterHand(before[i], tournament_->stacks()[i], provoked_[i], *rng_));
+    }
 
     const auto st = tournament_->standings();
     for (int s = 0; s < h->numSeats(); ++s) {
@@ -344,6 +558,8 @@ std::string Session::eventJson(const Event& e) {
             j.key("t").str("act").key("seat").num(e.seat).key("action").str(actionName(e.action));
             j.key("amount").num(static_cast<double>(e.amount)).key("total").num(static_cast<double>(e.total));
             j.key("allIn").boolean(e.allIn).key("street").str(streetName(e.street));
+            if (actConverted_ < actThink_.size()) j.key("thinkMs").num(actThink_[actConverted_]);
+            ++actConverted_;
             break;
         case EventType::BoardDealt: {
             board_.insert(board_.end(), e.cards.begin(), e.cards.end());
@@ -394,6 +610,7 @@ std::string Session::eventJson(const Event& e) {
                     all.push_back(revealed_[s][1]);
                     const HandValue v = evaluate(all);
                     f.open('{').key("seat").num(static_cast<double>(s)).key("hand").str(describeZh(v));
+                    f.key("strength").str(strengthName(ai::classifyHand(revealed_[s], board_)));
                     f.key("category").num(static_cast<int>(v.category())).key("best");
                     cards(f, bestFive(all));
                     f.close('}');

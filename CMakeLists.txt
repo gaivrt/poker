@@ -30,6 +30,7 @@ target_include_directories(poker_core PUBLIC core/include)
 add_library(poker_ai
   ai/src/equity.cpp
   ai/src/bot.cpp
+  ai/src/mind.cpp
 )
 target_include_directories(poker_ai PUBLIC ai/include)
 target_link_libraries(poker_ai PUBLIC poker_core)
@@ -80,6 +81,7 @@ add_executable(poker_tests
   tests/test_tournament.cpp
   tests/test_ai.cpp
   tests/test_session.cpp
+  tests/test_mind.cpp
 )
 target_link_libraries(poker_tests PRIVATE poker_session)
 add_test(NAME poker_tests COMMAND poker_tests)

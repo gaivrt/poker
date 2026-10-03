@@ -156,6 +156,25 @@ export class TableView extends Container {
     s.setStack(s.stack + amount);
   }
 
+  /** A dashed sight line from one player to another (the "stare" gesture). */
+  async stare(from: number, to: number) {
+    const a = this.seats[from].L.avatar;
+    const b = this.seats[to].L.avatar;
+    const g = new Graphics();
+    const n = 14;
+    for (let i = 0; i < n; i += 2) {
+      const t0 = i / n, t1 = (i + 1) / n;
+      g.moveTo(a.x + (b.x - a.x) * t0, a.y + (b.y - a.y) * t0).lineTo(a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1);
+    }
+    g.stroke({ width: 5, color: this.seats[from].char.color, alpha: 0.9 });
+    g.alpha = 0;
+    this.fx.addChild(g);
+    await tween(g, { alpha: 1 }, 150);
+    await wait(1300);
+    await tween(g, { alpha: 0 }, 300);
+    g.destroy();
+  }
+
   showBanner(text: string, sub = '') {
     this.hideBanner();
     const t = new Text({ text, style: { fontFamily: FONT, fontSize: 34, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x000000, width: 6 } } });

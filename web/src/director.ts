@@ -1,15 +1,56 @@
 // Drives one game: asks the engine for events, plays them as animations, and paces
 // bot turns. The engine decides everything; this file only decides how it looks.
+//
+// Mind games (docs/06-mind-games.md): table talk is sent through the overlay at any
+// time; bots think on a visible clock and may leak tells while they do; every hand
+// that gets turned face up is written into the "reading notes" next to what that
+// player said and did, so you can learn their habits.
 import type { Container } from 'pixi.js';
-import { type Character, pick } from './characters';
-import type { Game, GameEvent, TableState } from './engine';
+import { type Character, EXPRESSION_LABEL, gestureCaption, pick, talkLine } from './characters';
+import { Expression, type Game, type GameEvent, Gesture, type StrengthName, type TableState } from './engine';
 import { allInCutIn, bigHand, riverPunch } from './fx/effects';
 import type { TableView } from './table/TableView';
 import { fmt } from './table/layout';
 import { timing, wait } from './tween';
-import type { Overlay } from './ui/overlay';
+import type { Clock, Overlay } from './ui/overlay';
 
 const BIG_HAND_CATEGORY = 7; // four of a kind and up (HandCategory in hand_eval.hpp)
+const TELLS_KEY = 'poker.tells.v1';
+const TELL_UNLOCK = 2; // sightings needed before a tell goes into the collection
+
+interface Note {
+  hand: number;
+  cards: string[];
+  handName?: string;
+  strength?: StrengthName;
+  did: string[];
+  voluntary: boolean;
+}
+
+interface TellRecord {
+  count: number;
+  text: string;
+  character: string;
+}
+
+function loadTells(): Record<string, TellRecord> {
+  try {
+    return JSON.parse(localStorage.getItem(TELLS_KEY) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+function saveTells(t: Record<string, TellRecord>) {
+  try {
+    localStorage.setItem(TELLS_KEY, JSON.stringify(t));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+const SUIT: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
+const prettyCard = (c: string) => `${c[0] === 'T' ? '10' : c[0]}${SUIT[c[1]] ?? ''}`;
+const STRENGTH_LABEL: Record<StrengthName, string> = { strong: '大牌', medium: '中等', weak: '弱牌' };
 
 export class Director {
   private stopped = false;
@@ -20,6 +61,11 @@ export class Director {
   private heroOut = false;
   private skipping = false;
   private lineCooldown: number[] = [0, 0, 0, 0, 0, 0];
+  private backlog: GameEvent[] = [];
+  private clock: Clock = { perActionMs: 20000, bankMs: 30000 };
+  private heroHole: string[] = [];
+  private did: string[][] = [[], [], [], [], [], []]; // what each seat said/did this hand
+  private notes: Note[][] = [[], [], [], [], [], []];
 
   constructor(
     private game: Game,
@@ -29,7 +75,13 @@ export class Director {
     private camera: Container,
     private fxLayer: Container,
     private onFinished: () => void,
-  ) {}
+  ) {
+    ui.onTalk = (kind, code, target) => this.talk(kind, code, target);
+    ui.onNotes = () => this.notesHtml();
+    table.seats.forEach((s) => {
+      if (s.seat > 0) s.avatar.on('pointertap', () => !s.out && this.ui.setTarget(s.seat));
+    });
+  }
 
   stop() {
     this.stopped = true;
@@ -56,21 +108,31 @@ export class Director {
 
       if (g.isHumanTurn) {
         const st = g.state();
-        const choice = await this.ui.ask(g.legal(), {
-          pot: st.pot ?? 0,
-          currentBet: st.currentBet ?? 0,
-          bb: st.bb ?? 0,
-          sb: st.sb ?? 0,
-          preflop: (st.board ?? []).length === 0,
-        });
+        const choice = await this.ui.ask(
+          g.legal(),
+          { pot: st.pot ?? 0, currentBet: st.currentBet ?? 0, bb: st.bb ?? 0, sb: st.sb ?? 0, preflop: (st.board ?? []).length === 0 },
+          this.clock,
+        );
         if (!choice || this.stopped) break;
-        g.act(choice.type, choice.to);
+        g.act(choice.type, choice.to, choice.thinkMs);
       } else if (g.handRunning) {
-        await wait(this.ui.settings.fast ? 250 + Math.random() * 250 : 550 + Math.random() * 650);
+        const plan = g.prepareBot();
+        await this.play(g.drain()); // tells that slip out while it thinks
+        if (plan) {
+          const seat = this.table.seats[plan.seat];
+          seat.startThinking();
+          await wait(plan.thinkMs);
+          seat.stopThinking();
+        }
         if (this.stopped) break;
         g.stepBot();
       } else {
-        await wait(this.handHasWinner ? 1500 : 600);
+        await wait(this.handHasWinner ? 1200 : 500);
+        if (g.canShow && !this.skipping) {
+          const mask = await this.ui.askShow(this.heroHole.map(prettyCard));
+          if (mask) g.show(mask);
+          await this.play(g.drain());
+        }
         g.finishHand();
         await this.play(g.drain());
         if (this.stopped || g.finished) break;
@@ -79,6 +141,83 @@ export class Director {
     }
     if (!this.stopped) this.onFinished();
   }
+
+  // ---------------- table talk ----------------
+
+  private talk(kind: 'line' | 'expression' | 'gesture', code: number, target: number): boolean {
+    if (this.stopped || this.heroOut) return false;
+    const ok = this.game.signal(kind, code, target);
+    for (const e of this.game.drain()) {
+      if (e.t === 'signal') this.showSignal(e);
+      else this.backlog.push(e);
+    }
+    return ok;
+  }
+
+  /** Renders a signal right away (never blocks the game). */
+  private showSignal(e: Extract<GameEvent, { t: 'signal' }>) {
+    const seat = this.table.seats[e.seat];
+    const c = this.cast[e.seat];
+    const targetName = e.target >= 0 ? this.cast[e.target].name : undefined;
+    let note = '';
+    if (e.kind === 'line') {
+      const text = talkLine(c, e.code);
+      seat.say(text, 2400, targetName);
+      note = `说「${text}」${targetName ? `（对${targetName}）` : ''}`;
+    } else if (e.kind === 'expression') {
+      seat.setExpression(e.code as Expression);
+      note = `表情：${EXPRESSION_LABEL[e.code as Expression]}`;
+    } else {
+      const g = e.code as Gesture;
+      const caption = gestureCaption(g, targetName);
+      seat.showCaption(caption);
+      if (g === Gesture.RecheckCards) void seat.recheckCards();
+      else if (g === Gesture.FiddleChips) void seat.fiddleChips();
+      else if (g === Gesture.Sigh) void seat.sigh();
+      else if (g === Gesture.Stare && e.target >= 0) void this.table.stare(e.seat, e.target);
+      note = caption;
+    }
+    if (this.game.handRunning || this.handHasWinner) this.did[e.seat].push(note);
+  }
+
+  private recordTell(e: Extract<GameEvent, { t: 'tellSeen' }>) {
+    const tells = loadTells();
+    const key = String(e.tell);
+    const rec = tells[key] ?? { count: 0, text: e.text, character: this.cast[e.seat].name };
+    rec.count += 1;
+    tells[key] = rec;
+    saveTells(tells);
+    if (rec.count === TELL_UNLOCK) this.ui.toast(`发现破绽！${rec.character}：${rec.text}`);
+  }
+
+  private addNote(seat: number, cards: string[], handName: string | undefined, strength: StrengthName | undefined, voluntary: boolean) {
+    if (seat === 0) return;
+    this.notes[seat].unshift({ hand: this.hand.no, cards, handName, strength, did: [...this.did[seat]], voluntary });
+    this.ui.refreshNotes();
+  }
+
+  private notesHtml(): string {
+    const tells = loadTells();
+    const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+    const sections = this.cast
+      .map((c, seat) => {
+        if (seat === 0) return '';
+        const found = Object.values(tells).filter((t) => t.character === c.name && t.count >= TELL_UNLOCK);
+        const notes = this.notes[seat]
+          .slice(0, 8)
+          .map((n) => `<li><b>第 ${n.hand} 手</b> ${n.voluntary ? '<em>主动亮牌</em> ' : ''}${n.cards.map(prettyCard).join(' ')}
+            ${n.handName ? `· ${n.handName}` : ''} ${n.strength ? `<span class="st ${n.strength}">${STRENGTH_LABEL[n.strength]}</span>` : ''}
+            <div class="did">${n.did.length ? n.did.join(' · ') : '这手什么都没说'}</div></li>`)
+          .join('');
+        return `<section><h4 style="color:${hex(c.color)}">${c.name} <small>${c.style}</small></h4>
+          ${found.length ? `<div class="tells">已发现的破绽：${found.map((t) => `<span>${t.text}</span>`).join('')}</div>` : ''}
+          ${notes ? `<ul>${notes}</ul>` : '<p class="empty">还没见过她亮牌。</p>'}</section>`;
+      })
+      .join('');
+    return `<p class="hint">每次有人亮牌，这里会记下她这一手说过什么、做过什么、想了多久。对照她的真实牌力，找出她的习惯。</p>${sections}`;
+  }
+
+  // ---------------- event playback ----------------
 
   private markActive() {
     const st = this.game.state();
@@ -107,7 +246,8 @@ export class Director {
   }
 
   private async play(events: GameEvent[]) {
-    for (const e of events) {
+    const all = [...this.backlog.splice(0), ...events];
+    for (const e of all) {
       if (this.stopped) return;
       await this.playOne(e);
     }
@@ -136,9 +276,12 @@ export class Director {
         this.runout = false;
         this.handHasWinner = false;
         this.best = {};
+        this.did = this.did.map(() => []);
+        this.heroHole = [];
         this.lineCooldown = this.lineCooldown.map((c) => Math.max(0, c - 1));
         this.ui.resetPreActions();
         T.newHand(e.stacks, e.button);
+        this.ui.setTalkSeats(this.cast.map((c, seat) => ({ seat, name: c.name, color: c.color, live: seat > 0 && e.stacks[seat] > 0 })));
         this.updateHud();
         const dealt = e.stacks.map((s, i) => (s > 0 ? i : -1)).filter((i) => i >= 0);
         const order = [...dealt.filter((i) => i > e.button), ...dealt.filter((i) => i <= e.button)];
@@ -163,35 +306,40 @@ export class Director {
         break;
       }
       case 'hole':
+        this.heroHole = e.cards;
         await T.seats[e.seat].reveal(e.cards);
         break;
       case 'act': {
         const s = T.seats[e.seat];
         const c = this.cast[e.seat];
         s.setActive(false);
+        const secs = e.thinkMs !== undefined ? ` ${(e.thinkMs / 1000).toFixed(1)}s` : '';
         if (e.action === 'fold') {
           s.setFolded(true);
           s.setTag('弃牌', 0x9a94b8);
         } else if (e.action === 'check') {
-          s.setTag('过牌', 0xcfe9df);
+          s.setTag(`过牌${secs}`, 0xcfe9df);
         } else {
+          const verb = e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注';
           s.setStack(s.stack - e.amount);
           s.setBet(e.total);
-          s.setTag(e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注', 0xffe08a);
+          s.setTag(`${verb}${secs}`, 0xffe08a);
           void T.flyChip(s.L.avatar, s.betPos, 220);
+          // How long it took to put chips in is part of what others can read.
+          if (e.thinkMs !== undefined) this.did[e.seat].push(`${verb}前想了 ${(e.thinkMs / 1000).toFixed(1)} 秒`);
         }
         T.refreshPot();
         if (e.allIn) {
           s.markAllIn();
           if (this.pres === 'full') await allInCutIn(this.fxLayer, c, pick(c.lines.allIn) ?? 'ALL IN！');
-        } else if (e.action === 'bet' || e.action === 'raise') {
-          this.say(e.seat, c.lines.raise, 0.35);
-        } else if (e.action === 'call' && e.amount * 2 >= T.totalPot() - e.amount) {
-          this.say(e.seat, c.lines.call, 0.3);
         }
         await wait(e.action === 'fold' ? 120 : 220);
         break;
       }
+      case 'signal':
+        this.showSignal(e);
+        if (e.kind === 'line' && e.seat !== 0) await wait(450);
+        break;
       case 'board': {
         await T.gatherBets();
         T.seats.forEach((s) => {
@@ -236,7 +384,30 @@ export class Director {
         for (const h of e.hands) {
           T.seats[h.seat].showHand(h.hand);
           this.best[h.seat] = h.best;
+          const cards = T.seats[h.seat].cards.map((c) => c.code ?? '').filter(Boolean);
+          this.addNote(h.seat, cards, h.hand, h.strength, false);
         }
+        break;
+      case 'voluntaryShow': {
+        const s = T.seats[e.seat];
+        const c = this.cast[e.seat];
+        if (e.cards.length === 2) {
+          await s.reveal(e.cards);
+        } else {
+          // One card: flip the matching one (the hero knows which; opponents' order is cosmetic).
+          const i = e.seat === 0 ? Math.max(0, this.heroHole.indexOf(e.cards[0])) : 0;
+          s.cards[i].visible = true;
+          await s.cards[i].flipTo(e.cards[0], 260);
+        }
+        if (e.hand) s.showHand(e.hand);
+        const bluff = e.strength === 'weak';
+        T.showBanner(`${c.name} 亮牌了${bluff ? '：是诈唬！' : ''}`, e.cards.map(prettyCard).join(' '));
+        if (e.cards.length === 2) this.addNote(e.seat, e.cards, e.hand, e.strength, true);
+        await wait(1400);
+        break;
+      }
+      case 'tellSeen':
+        this.recordTell(e);
         break;
       case 'win': {
         const first = !this.handHasWinner;
@@ -267,6 +438,7 @@ export class Director {
         this.say(e.seat, this.cast[e.seat].lines.out, 1);
         if (e.seat === 0) {
           this.heroOut = true;
+          this.ui.hideTalk();
           this.ui.showSpectate(place);
         }
         await wait(600);
