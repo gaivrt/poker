@@ -1,3 +1,4 @@
+import 'pixi.js/unsafe-eval'; // Pixi without eval(): runs under strict content security policies
 import { Application, Container } from 'pixi.js';
 import './style.css';
 import { CAST, type Character, HERO, characterFor } from './characters';

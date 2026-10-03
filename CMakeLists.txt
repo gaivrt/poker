@@ -42,16 +42,24 @@ target_link_libraries(poker_session PUBLIC poker_ai)
 if(EMSCRIPTEN)
   # WebAssembly module for the web client: an ES module with the .wasm inlined,
   # written next to the TypeScript sources (see scripts/build-wasm.sh).
+  # POKER_WEB_WASM=OFF emits plain JavaScript instead (for hosts whose content
+  # security policy forbids compiling WebAssembly).
+  option(POKER_WEB_WASM "Build the web engine as WebAssembly (OFF: plain JavaScript)" ON)
+  set(POKER_WEB_OUT_DIR ${CMAKE_SOURCE_DIR}/web/src/wasm CACHE PATH "Where poker.js is written")
   add_executable(poker_wasm web/wasm/bindings.cpp)
   target_link_libraries(poker_wasm PRIVATE poker_session)
   target_link_options(poker_wasm PRIVATE
     -lembind
     -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createPokerModule
-    -sSINGLE_FILE=1 -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web,node)
+    -sSINGLE_FILE=1 -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web,node
+    -sDYNAMIC_EXECUTION=0)  # no eval / new Function: works under strict CSP
+  if(NOT POKER_WEB_WASM)
+    target_link_options(poker_wasm PRIVATE -sWASM=0)
+  endif()
   set_target_properties(poker_wasm PROPERTIES
     OUTPUT_NAME poker
     SUFFIX ".js"
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/web/src/wasm)
+    RUNTIME_OUTPUT_DIRECTORY ${POKER_WEB_OUT_DIR})
   return()
 endif()
 
