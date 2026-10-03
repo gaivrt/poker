@@ -1,13 +1,22 @@
 // HTML overlay on top of the canvas: menus, HUD, action panel, results.
 // It lives in the same 1920x1080 design space as the canvas (scaled together).
 import type { Difficulty, Format, Legal, SignalKindName, Standing } from '../engine';
-import { type Character, GESTURE_LABEL, LINE_LABEL, STICKER_LABEL } from '../characters';
+import { CAST, type Character, GESTURE_LABEL, LINE_LABEL, STICKER_LABEL } from '../characters';
+import type { Quality } from '../fx/post';
+import { type Profile, TIERS, tierOf } from '../profile';
 import { fmt } from '../table/layout';
+import { TELL_COUNT, TELL_UNLOCK, loadTells } from '../tells';
 
 export type Presentation = 'full' | 'simple' | 'off';
 export interface Settings {
   presentation: Presentation;
   fast: boolean;
+  sound: boolean;
+  quality: Quality;
+}
+export interface HomeHandlers {
+  start: (format: Format, difficulty: Difficulty, ranked: boolean) => void;
+  rename: (name: string) => void;
 }
 export interface Choice {
   type: 'fold' | 'check' | 'call' | 'bet' | 'raise';
@@ -42,16 +51,24 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''):
   return e;
 }
 
+const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+const esc = (t: string) => t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+
 const SETTINGS_KEY = 'poker.settings.v1';
 export function loadSettings(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '');
     if (s && (s.presentation === 'full' || s.presentation === 'simple' || s.presentation === 'off'))
-      return { presentation: s.presentation, fast: !!s.fast };
+      return {
+        presentation: s.presentation,
+        fast: !!s.fast,
+        sound: s.sound !== false,
+        quality: s.quality === 'medium' || s.quality === 'low' ? s.quality : 'high',
+      };
   } catch {
     /* storage unavailable or empty */
   }
-  return { presentation: 'full', fast: false };
+  return { presentation: 'full', fast: false, sound: true, quality: 'high' };
 }
 function saveSettings(s: Settings) {
   try {
@@ -77,7 +94,11 @@ export class Overlay {
   private pre = el('div', 'pre-actions hidden');
   private spectate = el('div', 'spectate hidden');
   private modal = el('div', 'modal hidden');
+  private home = el('div', 'home hidden');
+  private loader = el('div', 'loader hidden', '<div class="spin"><i></i><i></i><i></i></div><div class="t">洗牌中…</div>');
   private talk = el('div', 'talk-panel hidden');
+  private talkBtns = el('div', 'talk-btns hidden');
+  private talkOpen = false;
   private showPrompt = el('div', 'show-prompt hidden');
   private notes = el('div', 'notes hidden');
   private toastBox = el('div', 'toast hidden');
@@ -96,10 +117,16 @@ export class Overlay {
 
   constructor(root: HTMLElement) {
     this.root = root;
-    root.append(this.hud, this.topRight, this.talk, this.panel, this.pre, this.showPrompt, this.spectate, this.notes, this.toastBox, this.nextBox, this.modal);
+    root.append(this.home, this.hud, this.topRight, this.talkBtns, this.talk, this.panel, this.pre, this.showPrompt, this.spectate, this.notes, this.toastBox, this.nextBox, this.modal, this.loader);
+    this.talkBtns.innerHTML = `<button data-tab="line" class="tb"><b>台词</b></button><button data-tab="act" class="tb"><b>表情</b></button>`;
+    this.talkBtns.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
+      (b.onclick = () => {
+        const tab = b.dataset.tab as 'line' | 'act';
+        this.openTalk(!(this.talkOpen && this.talkTab === tab), tab);
+      }));
     const notesBtn = el('button', 'round', '笔记');
     const settingsBtn = el('button', 'round', '设置');
-    const quitBtn = el('button', 'round', '菜单');
+    const quitBtn = el('button', 'round', '离开');
     notesBtn.onclick = () => this.toggleNotes();
     settingsBtn.onclick = () => this.openSettings();
     quitBtn.onclick = () => this.confirmQuit();
@@ -121,7 +148,9 @@ export class Overlay {
     this.hud.classList.toggle('hidden', !on);
     this.topRight.classList.toggle('hidden', !on);
     this.pre.classList.toggle('hidden', !on);
-    this.talk.classList.toggle('hidden', !on);
+    this.talkBtns.classList.toggle('hidden', !on);
+    this.openTalk(false);
+    if (on) this.home.classList.add('hidden');
     if (!on) {
       this.panel.classList.add('hidden');
       this.spectate.classList.add('hidden');
@@ -145,7 +174,17 @@ export class Overlay {
   }
 
   hideTalk() {
-    this.talk.classList.add('hidden');
+    this.openTalk(false);
+    this.talkBtns.classList.add('hidden');
+  }
+
+  /** The talk popover opens above the two round buttons next to your character. */
+  private openTalk(on: boolean, tab = this.talkTab) {
+    this.talkOpen = on;
+    this.talkTab = tab;
+    this.talk.classList.toggle('hidden', !on);
+    this.talkBtns.querySelectorAll<HTMLElement>('button').forEach((b) => b.classList.toggle('on', on && b.dataset.tab === tab));
+    if (on) this.renderTalk();
   }
 
   private renderTalk() {
@@ -159,7 +198,6 @@ export class Overlay {
             ...Object.entries(STICKER_LABEL).map(([k, v]) => ['sticker', Number(k), v, this.stickerPreviews[Number(k)]] as Item),
             ...Object.entries(GESTURE_LABEL).map(([k, v]) => ['gesture', Number(k), v] as Item),
           ];
-    const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
     this.talk.innerHTML = `
       <div class="talk-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === this.talkTab ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="talk-grid ${this.talkTab}">${items
@@ -186,6 +224,7 @@ export class Overlay {
         const [kind, code] = items[Number(b.dataset.i)];
         const ok = this.onTalk(kind, code, this.target);
         if (!ok) this.toast('这条街已经说得够多了，等下一条街吧');
+        else this.openTalk(false);
         grid.classList.add('cooldown');
         setTimeout(() => grid.classList.remove('cooldown'), 1200);
       }));
@@ -268,43 +307,178 @@ export class Overlay {
     this.hud.innerHTML = `<div class="l1">${line1}</div><div class="l2">${line2}</div>`;
   }
 
-  // ---------- menu ----------
-  showMenu(onStart: (f: Format, d: Difficulty) => void) {
+  // ---------- home ----------
+  showHome(profile: Profile, h: HomeHandlers) {
     this.setInGame(false);
-    this.modal.className = 'modal menu';
-    this.modal.innerHTML = `
-      <div class="card">
-        <div class="title">二次元德州扑克</div>
-        <div class="subtitle">原型 M1 · 你 vs 5 名 AI</div>
-        <div class="group"><div class="label">赛制</div>
-          <div class="seg" data-name="format">
-            <button data-v="quick" class="on">快速赛<small>18 手 · 约 9 分钟</small></button>
-            <button data-v="standard">标准赛<small>30 手 · 约 15 分钟</small></button>
-            <button data-v="classic">经典淘汰赛<small>打到只剩 1 人</small></button>
-          </div></div>
-        <div class="group"><div class="label">AI 难度</div>
-          <div class="seg" data-name="diff">
-            <button data-v="0">简单</button><button data-v="1" class="on">普通</button><button data-v="2">困难</button>
-          </div></div>
-        <button class="primary start">开始对局</button>
-        <div class="note">角色、美术、台词均为占位。限定手数赛：打满手数后按筹码排名，中途出局的排在后面。</div>
-      </div>`;
-    this.modal.querySelectorAll('.seg').forEach((seg) => {
+    this.closeModal();
+    this.loading(false);
+    const t = tierOf(profile.points);
+    const tells = loadTells();
+    const found = Object.values(tells).filter((r) => r.count >= TELL_UNLOCK).length;
+    const total = TELL_COUNT.reduce((a, b) => a + b, 0);
+    this.home.classList.remove('hidden');
+    this.home.innerHTML = `
+      <div class="topbar">
+        <button class="me" title="改名"><span class="ava">${esc(profile.name.slice(0, 1))}</span>
+          <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分</small></span>
+          <span class="prog"><i style="width:${Math.round(t.progress * 100)}%"></i></span></button>
+        <div class="daily"><b>今日任务</b><span>打完 1 局段位赛</span><span>发现 1 个破绽</span></div>
+        <button class="round gear">设置</button>
+      </div>
+      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">ANIME HOLD'EM</div></div>
+      <div class="modes">
+        <button class="poster ranked"><span class="tape"></span>
+          <b>段位赛</b><small>打满手数按筹码排名 · 赢分升段</small>
+          <span class="tier"><em>${t.name}</em>${t.next ? `距 ${t.next} 还差 ${t.toNext} 分` : '已是最高段位'}</span></button>
+        <div class="poster-row">
+          <button class="poster practice"><span class="tape"></span><b>单人练习</b><small>自选赛制和难度</small></button>
+          <button class="poster friends" disabled><span class="tape"></span><b>好友房</b><small>开发中</small></button>
+        </div>
+        <div class="rounds">
+          <button data-k="roster"><i>角</i>角色</button>
+          <button data-k="tells"><i>鉴</i>图鉴<sup>${found}/${total}</sup></button>
+          <button data-k="replays"><i>谱</i>牌谱</button>
+          <button data-k="rules"><i>规</i>规则</button>
+        </div>
+      </div>
+      <div class="news"><b>公告</b><span>原型测试中：对手为 AI，角色立绘为占位，联机段位赛正在开发。</span></div>`;
+    const q = <T extends HTMLElement>(sel: string) => this.home.querySelector(sel) as T;
+    q<HTMLButtonElement>('.gear').onclick = () => this.openSettings();
+    q<HTMLButtonElement>('.me').onclick = () => this.renameDialog(profile.name, (n) => {
+      h.rename(n);
+      this.showHome({ ...profile, name: n }, h);
+    });
+    q<HTMLButtonElement>('.ranked').onclick = () => this.formatDialog(true, (f, d) => h.start(f, d, true), profile);
+    q<HTMLButtonElement>('.practice').onclick = () => this.formatDialog(false, (f, d) => h.start(f, d, false), profile);
+    this.home.querySelectorAll<HTMLButtonElement>('.rounds button').forEach((b) =>
+      (b.onclick = () => {
+        const k = b.dataset.k;
+        if (k === 'roster') this.rosterDialog();
+        else if (k === 'tells') this.tellsDialog();
+        else if (k === 'rules') this.rulesDialog();
+        else this.toast('牌谱回放正在开发');
+      }));
+  }
+
+  /** Full-screen "shuffling" curtain while a table loads. */
+  loading(on: boolean) {
+    if (on) this.home.classList.add('hidden');
+    this.loader.classList.toggle('hidden', !on);
+  }
+
+  private dialog(cls: string, html: string) {
+    this.modal.className = 'modal';
+    this.modal.innerHTML = `<div class="card ${cls}">${html}</div>`;
+    const close = this.modal.querySelector('.close') as HTMLButtonElement | null;
+    if (close) close.onclick = () => this.closeModal();
+    return this.modal;
+  }
+
+  private bindSeg() {
+    this.modal.querySelectorAll('.seg').forEach((seg) =>
       seg.querySelectorAll('button').forEach((b) =>
         b.addEventListener('click', () => {
           seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
           b.classList.add('on');
-        }),
-      );
-    });
-    const pickedValue = (name: string) =>
-      (this.modal.querySelector(`.seg[data-name="${name}"] button.on`) as HTMLElement).dataset.v!;
-    (this.modal.querySelector('.start') as HTMLButtonElement).onclick = () => {
-      const format = pickedValue('format') as Format;
-      const diff = Number(pickedValue('diff')) as Difficulty;
+        })));
+  }
+
+  private picked(name: string) {
+    return (this.modal.querySelector(`.seg[data-name="${name}"] button.on`) as HTMLElement).dataset.v!;
+  }
+
+  private formatDialog(ranked: boolean, go: (f: Format, d: Difficulty) => void, profile: Profile) {
+    // Ranked opponents get tougher from 黄金 up; practice lets you choose.
+    const rankedDiff: Difficulty = tierOf(profile.points).index >= 3 ? 2 : 1;
+    this.dialog('small', `
+      <div class="title2">${ranked ? '段位赛' : '单人练习'}</div>
+      <div class="group"><div class="label">赛制</div>
+        <div class="seg" data-name="format">
+          <button data-v="quick" class="on">快速赛<small>18 手 · 约 9 分钟</small></button>
+          <button data-v="standard">标准赛<small>30 手 · 约 15 分钟</small></button>
+          ${ranked ? '' : '<button data-v="classic">淘汰赛<small>打到只剩 1 人</small></button>'}
+        </div></div>
+      ${ranked
+        ? `<div class="hint">名次得分：${PLACE_POINTS.map((p, i) => `第${i + 1} ${p > 0 ? '+' : ''}${p}`).join(' · ')}</div>`
+        : `<div class="group"><div class="label">AI 难度</div>
+        <div class="seg" data-name="diff">
+          <button data-v="0">简单</button><button data-v="1" class="on">普通</button><button data-v="2">困难</button>
+        </div></div>`}
+      <div class="row"><button class="ghost close">返回</button><button class="primary go">开始</button></div>`);
+    this.bindSeg();
+    (this.modal.querySelector('.go') as HTMLButtonElement).onclick = () => {
+      const f = this.picked('format') as Format;
+      const d = ranked ? rankedDiff : (Number(this.picked('diff')) as Difficulty);
       this.closeModal();
-      onStart(format, diff);
+      go(f, d);
     };
+  }
+
+  private renameDialog(name: string, done: (n: string) => void) {
+    this.dialog('small', `
+      <div class="title2">昵称</div>
+      <input class="name" maxlength="8" value="${esc(name)}">
+      <div class="row"><button class="ghost close">取消</button><button class="primary ok">确定</button></div>`);
+    const input = this.modal.querySelector('input.name') as HTMLInputElement;
+    input.focus();
+    input.select();
+    const ok = () => {
+      const n = input.value.trim().slice(0, 8);
+      this.closeModal();
+      if (n) done(n);
+    };
+    input.onkeydown = (e) => e.key === 'Enter' && ok();
+    (this.modal.querySelector('.ok') as HTMLButtonElement).onclick = ok;
+  }
+
+  private rosterDialog() {
+    const tells = loadTells();
+    this.dialog('wide', `
+      <div class="title2">角色</div>
+      <div class="roster">${CAST.map((c, i) => {
+        const got = Object.values(tells).filter((t) => t.character === c.name && t.count >= TELL_UNLOCK).length;
+        return `<div class="who" style="--c:${hex(c.color)}"><span class="ava">${c.name}</span>
+          <b>${c.name}</b><small>${c.style}</small><q>${esc(c.lines.win[0] ?? '')}</q>
+          <em>破绽 ${got}/${TELL_COUNT[i]}</em></div>`;
+      }).join('')}</div>
+      <div class="hint center">立绘为占位，角色设计确定后替换。</div>
+      <button class="primary close">关闭</button>`);
+  }
+
+  private tellsDialog() {
+    const tells = loadTells();
+    const found = (name: string) => Object.values(tells).filter((t) => t.character === name);
+    this.dialog('wide', `
+      <div class="title2">破绽图鉴</div>
+      <div class="hint center">对局中同一个破绽被你看到 ${TELL_UNLOCK} 次，就会收进图鉴。</div>
+      <div class="tellbook">${CAST.map((c, i) => {
+        const recs = found(c.name);
+        const slots = Array.from({ length: TELL_COUNT[i] }, (_, k) => {
+          const r = recs.filter((t) => t.count >= TELL_UNLOCK)[k];
+          return r ? `<li class="got">${esc(r.text)}</li>` : `<li>？？？</li>`;
+        });
+        return `<section style="--c:${hex(c.color)}"><h4>${c.name}<small>${c.style}</small></h4><ul>${slots.join('')}</ul></section>`;
+      }).join('')}</div>
+      <button class="primary close">关闭</button>`);
+  }
+
+  private rulesDialog() {
+    this.dialog('wide rules', `
+      <div class="title2">规则</div>
+      <div class="cols">
+        <div><h4>一手牌怎么打</h4>
+          <p>每人 2 张底牌，桌面依次发出 3 张翻牌、1 张转牌、1 张河牌。每一轮都可以弃牌、过牌、跟注或加注。</p>
+          <p>最后用 7 张里最好的 5 张比大小，或者让其他人都弃牌，赢下底池。</p>
+          <h4>赛制</h4>
+          <p>6 人桌，每人 2000 筹码，盲注随手数上涨。快速赛 18 手、标准赛 30 手，打满后按筹码排名；淘汰赛打到只剩 1 人。</p>
+          <h4>心理战</h4>
+          <p>可以说台词、发表情、做动作，也会看到对手的下注快慢和大小。每个 AI 都有自己的破绽，记在笔记里。</p></div>
+        <div><h4>牌型（从大到小）</h4><ol class="ranks">
+          <li><b>同花顺</b>A♠K♠Q♠J♠10♠</li><li><b>四条</b>9 9 9 9 K</li><li><b>葫芦</b>Q Q Q 7 7</li>
+          <li><b>同花</b>五张同花色</li><li><b>顺子</b>5 6 7 8 9</li><li><b>三条</b>8 8 8 A 4</li>
+          <li><b>两对</b>J J 4 4 9</li><li><b>一对</b>10 10 A 6 2</li><li><b>高牌</b>以上都没有</li></ol></div>
+      </div>
+      <button class="primary close">关闭</button>`);
   }
 
   closeModal() {
@@ -326,6 +500,11 @@ export class Overlay {
           <div class="hint">简略：只保留基础动画和全下摊牌；关闭：只保留基础动画。</div></div>
         <div class="group"><div class="label">速度</div>
           <div class="seg" data-name="speed"><button data-v="0">正常</button><button data-v="1">快速</button></div></div>
+        <div class="group"><div class="label">音效</div>
+          <div class="seg" data-name="sound"><button data-v="1">开</button><button data-v="0">关</button></div></div>
+        <div class="group"><div class="label">画质</div>
+          <div class="seg" data-name="quality"><button data-v="high">高</button><button data-v="medium">中</button><button data-v="low">低</button></div>
+          <div class="hint">低：关闭泛光和胶片颗粒，适合旧手机。</div></div>
         <button class="primary close">完成</button>
       </div>`;
     const mark = (name: string, v: string) =>
@@ -333,12 +512,16 @@ export class Overlay {
         (b as HTMLElement).classList.toggle('on', (b as HTMLElement).dataset.v === v));
     mark('pres', s.presentation);
     mark('speed', s.fast ? '1' : '0');
+    mark('sound', s.sound ? '1' : '0');
+    mark('quality', s.quality);
     this.modal.querySelectorAll('.seg button').forEach((b) =>
       b.addEventListener('click', () => {
         const seg = (b.parentElement as HTMLElement).dataset.name!;
         const v = (b as HTMLElement).dataset.v!;
         if (seg === 'pres') s.presentation = v as Presentation;
-        else s.fast = v === '1';
+        else if (seg === 'speed') s.fast = v === '1';
+        else if (seg === 'sound') s.sound = v === '1';
+        else s.quality = v as Quality;
         mark(seg, v);
         saveSettings(s);
         this.onSettings();
@@ -351,8 +534,8 @@ export class Overlay {
     this.modal.className = 'modal';
     this.modal.innerHTML = `
       <div class="card small">
-        <div class="title2">放弃这局，回到菜单？</div>
-        <div class="row"><button class="ghost no">继续打</button><button class="primary yes">回到菜单</button></div>
+        <div class="title2">放弃这局，回到主页？</div>
+        <div class="row"><button class="ghost no">继续打</button><button class="primary yes">回到主页</button></div>
       </div>`;
     (this.modal.querySelector('.no') as HTMLButtonElement).onclick = () => this.closeModal();
     (this.modal.querySelector('.yes') as HTMLButtonElement).onclick = () => {
@@ -489,34 +672,50 @@ export class Overlay {
   }
 
   // ---------- results ----------
-  showResults(standings: Standing[], cast: Character[], onAgain: () => void, onMenu: () => void) {
+  showResults(standings: Standing[], cast: Character[], onAgain: () => void, onMenu: () => void, rank?: { before: number; after: number }) {
     this.panel.classList.add('hidden');
     this.spectate.classList.add('hidden');
+    this.openTalk(false);
     const points = (s: Standing) => {
       let sum = 0;
       for (let p = s.place; p <= s.placeTo; p++) sum += PLACE_POINTS[p - 1] ?? 0;
       return sum / (s.placeTo - s.place + 1);
     };
     const rows = standings
-      .map((s) => {
+      .map((s, i) => {
         const c = cast[s.seat];
         const pts = points(s);
         const place = s.place === s.placeTo ? `${s.place}` : `${s.place}-${s.placeTo}`;
-        return `<tr class="${s.seat === 0 ? 'me' : ''}">
+        return `<tr class="${s.seat === 0 ? 'me' : ''}" style="--d:${i * 90}ms">
           <td class="place p${s.place}">${place}</td>
-          <td><span class="dot" style="background:#${c.color.toString(16).padStart(6, '0')}"></span>${c.name}<small>${c.style}</small></td>
+          <td><span class="dot" style="background:${hex(c.color)}"></span>${c.name}<small>${c.style}</small></td>
           <td class="num">${fmt(s.chips)}</td>
-          <td class="num ${pts > 0 ? 'up' : pts < 0 ? 'down' : ''}">${pts > 0 ? '+' : ''}${pts}</td></tr>`;
+          ${rank ? `<td class="num ${pts > 0 ? 'up' : pts < 0 ? 'down' : ''}">${pts > 0 ? '+' : ''}${pts}</td>` : ''}</tr>`;
       })
       .join('');
     const me = standings.find((s) => s.seat === 0)!;
+    let rankHtml = '';
+    if (rank) {
+      const a = tierOf(rank.before);
+      const b = tierOf(rank.after);
+      const d = rank.after - rank.before;
+      const moved = b.index > a.index ? `<em class="promo">升段！${a.name} → ${b.name}</em>` : b.index < a.index ? `<em class="demo">降至 ${b.name}</em>` : '';
+      rankHtml = `<div class="rankbox"><span class="tier">${b.name}</span>
+        <span class="pts">${rank.after} 分 <b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${d}</b></span>
+        <span class="prog"><i style="width:${Math.round(a.index === b.index ? a.progress * 100 : 0)}%" data-to="${Math.round(b.progress * 100)}"></i></span>
+        ${moved}${b.next ? `<small>距 ${b.next} 还差 ${b.toNext} 分</small>` : `<small>最高段位 ${TIERS[TIERS.length - 1].name}</small>`}</div>`;
+    }
     this.modal.className = 'modal';
     this.modal.innerHTML = `
       <div class="card results">
-        <div class="title2">${me.place === 1 ? '🏆 第 1 名！' : `你获得第 ${me.place} 名`}</div>
-        <table><thead><tr><th>名次</th><th>玩家</th><th>筹码</th><th>段位分</th></tr></thead><tbody>${rows}</tbody></table>
-        <div class="row"><button class="ghost menu">回到菜单</button><button class="primary again">再来一局</button></div>
+        <div class="place-big p${me.place}">${me.place === 1 ? '第 1 名！' : `第 ${me.place} 名`}</div>
+        ${rankHtml}
+        <table><thead><tr><th>名次</th><th>玩家</th><th>筹码</th>${rank ? '<th>段位分</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>
+        <div class="row"><button class="ghost menu">回到主页</button><button class="primary again">再来一局</button></div>
       </div>`;
+    // Let the progress bar fill after the card lands.
+    const bar = this.modal.querySelector('.rankbox .prog i') as HTMLElement | null;
+    if (bar) setTimeout(() => (bar.style.width = `${bar.dataset.to}%`), 500);
     (this.modal.querySelector('.again') as HTMLButtonElement).onclick = () => {
       this.closeModal();
       onAgain();

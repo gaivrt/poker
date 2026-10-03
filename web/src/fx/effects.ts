@@ -3,7 +3,7 @@
 import { Container, Graphics, Text, Ticker } from 'pixi.js';
 import type { Character } from '../characters';
 import { FONT } from '../table/layout';
-import { animate, ease, tween, wait } from '../tween';
+import { ease, tween, wait } from '../tween';
 
 function skippable(layer: Container): { skipped: () => boolean; done: () => void } {
   let skipped = false;
@@ -49,25 +49,6 @@ export async function allInCutIn(layer: Container, char: Character, line: string
   await Promise.all([tween(band, { x: -1920 }, 220, ease.inCubic), tween(shade, { alpha: 0 }, 220)]);
   tap.done();
   root.destroy({ children: true });
-}
-
-/** Tier 3 camera: a short push-in and shake on the river of an all-in runout. */
-export async function riverPunch(cam: Container) {
-  const s0 = cam.scale.x;
-  const x0 = cam.x;
-  const y0 = cam.y;
-  // Zoom around the board (design point 960, 480) and shake a little.
-  const set = (k: number, shake: number) => {
-    const sc = s0 * (1 + 0.06 * k);
-    cam.scale.set(sc);
-    cam.position.set(x0 - 960 * (sc - s0) + shake * s0, y0 - 480 * (sc - s0));
-  };
-  await animate(180, (p) => set(p, 0));
-  await animate(240, (p) => set(1, Math.sin(p * Math.PI * 6) * 7 * (1 - p)), ease.linear);
-  await wait(200);
-  await animate(200, (p) => set(1 - p, 0));
-  cam.scale.set(s0);
-  cam.position.set(x0, y0);
 }
 
 /** Tier 4: full-screen hand name (four of a kind, straight flush, royal flush). */

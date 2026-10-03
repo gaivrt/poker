@@ -1,39 +1,46 @@
-// Table layout in design pixels (1920x1080). Mirrors docs/03 §2.1.
+// First-person table layout in design pixels (1920×1080). See docs/07 §4 and docs/08 §1.
 export const DESIGN_W = 1920;
 export const DESIGN_H = 1080;
 
 export interface Point { x: number; y: number }
 
-export interface SeatLayout {
-  avatar: Point;        // avatar centre
-  avatarSize: { w: number; h: number };
-  cards: Point;         // centre of the first hole card
-  cardGap: number;      // offset to the second card
-  bet: Point;           // where this seat's bet sits on the felt
-  dealer: Point;        // dealer button position
+export const FONT = '"Noto Sans SC","PingFang SC","Hiragino Sans","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
+export const FONT_DISPLAY = '"ZCOOL QingKe HuangYou","Noto Sans SC","PingFang SC","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
+export const FONT_NUM = '"Dela Gothic One","Noto Sans SC","PingFang SC","WenQuanYi Zen Hei",sans-serif';
+
+export interface SeatSpot {
+  base: Point;     // bottom-centre of the character art (hidden below the table rim)
+  height: number;  // displayed height of the art (depth: nearer seats are bigger)
+  plate: Point;    // name plate on the table edge; chips leave from here
+  plateTilt: number;
+  cards: Point;    // where its two cards lie on the felt
+  cardScale: number;
+  bet: Point;      // its bet on the felt
+  dealer: Point;   // dealer button when it has the button
 }
 
-export const TABLE_CENTER: Point = { x: 960, y: 500 };
-export const POT_POS: Point = { x: 960, y: 357 };
-export const BOARD_Y = 477;
-export const BOARD_X = [712, 836, 960, 1084, 1208];
-export const BOARD_CARD = { w: 110, h: 154 };
-export const HERO_CARD = { w: 140, h: 196 };
-export const OPP_CARD = { w: 64, h: 90 };
-
-const OPP = { w: 150, h: 190 };
-
-// Seat 0 is the human; seats go clockwise (the next seat is on the screen's left).
-export const SEATS: SeatLayout[] = [
-  { avatar: { x: 645, y: 948 }, avatarSize: { w: 170, h: 215 }, cards: { x: 835, y: 938 }, cardGap: 150, bet: { x: 960, y: 690 }, dealer: { x: 528, y: 870 } },
-  { avatar: { x: 250, y: 590 }, avatarSize: OPP, cards: { x: 372, y: 565 }, cardGap: 30, bet: { x: 480, y: 575 }, dealer: { x: 250, y: 468 } },
-  { avatar: { x: 360, y: 245 }, avatarSize: OPP, cards: { x: 482, y: 235 }, cardGap: 30, bet: { x: 575, y: 365 }, dealer: { x: 455, y: 138 } },
-  { avatar: { x: 960, y: 135 }, avatarSize: OPP, cards: { x: 1082, y: 128 }, cardGap: 30, bet: { x: 960, y: 302 }, dealer: { x: 838, y: 62 } },
-  { avatar: { x: 1560, y: 245 }, avatarSize: OPP, cards: { x: 1408, y: 235 }, cardGap: 30, bet: { x: 1345, y: 365 }, dealer: { x: 1465, y: 138 } },
-  { avatar: { x: 1670, y: 590 }, avatarSize: OPP, cards: { x: 1518, y: 565 }, cardGap: 30, bet: { x: 1440, y: 575 }, dealer: { x: 1670, y: 468 } },
+// Seat 0 is you (the camera). Seats go clockwise: seat 1 is on your left.
+export const SPOTS: SeatSpot[] = [
+  { base: { x: 185, y: 1150 }, height: 470, plate: { x: 205, y: 1040 }, plateTilt: -0.02, cards: { x: 880, y: 1050 }, cardScale: 1, bet: { x: 700, y: 885 }, dealer: { x: 340, y: 1000 } },
+  { base: { x: 205, y: 870 }, height: 660, plate: { x: 300, y: 650 }, plateTilt: 0.07, cards: { x: 410, y: 745 }, cardScale: 0.9, bet: { x: 520, y: 735 }, dealer: { x: 420, y: 620 } },
+  { base: { x: 600, y: 730 }, height: 540, plate: { x: 600, y: 590 }, plateTilt: 0.03, cards: { x: 505, y: 655 }, cardScale: 0.78, bet: { x: 665, y: 672 }, dealer: { x: 715, y: 575 } },
+  { base: { x: 960, y: 690 }, height: 500, plate: { x: 960, y: 562 }, plateTilt: -0.02, cards: { x: 830, y: 612 }, cardScale: 0.72, bet: { x: 1090, y: 618 }, dealer: { x: 1075, y: 548 } },
+  { base: { x: 1320, y: 730 }, height: 540, plate: { x: 1320, y: 590 }, plateTilt: -0.03, cards: { x: 1415, y: 655 }, cardScale: 0.78, bet: { x: 1255, y: 672 }, dealer: { x: 1205, y: 575 } },
+  { base: { x: 1715, y: 870 }, height: 660, plate: { x: 1620, y: 650 }, plateTilt: -0.07, cards: { x: 1510, y: 745 }, cardScale: 0.9, bet: { x: 1400, y: 735 }, dealer: { x: 1500, y: 620 } },
 ];
 
-export const FONT = '"PingFang SC","Hiragino Sans","Noto Sans CJK SC","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
+export const SHOE: Point = { x: 960, y: 520 };          // where the dealer deals from
+export const POT_POS: Point = { x: 960, y: 690 };
+export const BOARD_Y = 782;
+export const BOARD_X = [740, 850, 960, 1070, 1180];
+export const BOARD_CARD = { w: 96, h: 134 };
+export const HERO_CARD = { w: 200, h: 280 };
+export const OPP_CARD = { w: 60, h: 84 };
+
+/** Where a character's head ends up for a given spot (art: head at 39% from the top). */
+export function headOf(s: SeatSpot): Point {
+  return { x: s.base.x, y: s.base.y - s.height * 0.61 };
+}
 
 export function fmt(n: number): string {
   return Math.round(n).toLocaleString('en-US');

@@ -6,19 +6,19 @@
 // that gets turned face up is written into the "reading notes" next to what that
 // player said and did, so you can learn their habits.
 import type { Container } from 'pixi.js';
+import { sfx } from './audio/sfx';
+import type { Camera } from './fx/camera';
 import { type Character, EXPRESSION_LABEL, STICKER_LABEL, gestureCaption, pick, talkLine } from './characters';
 import { Expression, type Game, type GameEvent, Gesture, type SignalKindName, Sticker, type StrengthName, type TableState } from './engine';
 import type { Face } from './fx/stickers';
-import { allInCutIn, bigHand, riverPunch } from './fx/effects';
-import type { TableView } from './table/TableView';
-import { fmt } from './table/layout';
+import { allInCutIn, bigHand } from './fx/effects';
+import type { TableStage } from './stage/TableStage';
+import { POT_POS, fmt } from './table/layout';
 import { timing, wait } from './tween';
+import { TELL_UNLOCK, loadTells, saveTells } from './tells';
 import type { Clock, Overlay } from './ui/overlay';
 
 const BIG_HAND_CATEGORY = 7; // four of a kind and up (HandCategory in hand_eval.hpp)
-const TELLS_KEY = 'poker.tells.v1';
-const TELL_UNLOCK = 2; // sightings needed before a tell goes into the collection
-
 interface Note {
   hand: number;
   cards: string[];
@@ -26,27 +26,6 @@ interface Note {
   strength?: StrengthName;
   did: string[];
   voluntary: boolean;
-}
-
-interface TellRecord {
-  count: number;
-  text: string;
-  character: string;
-}
-
-function loadTells(): Record<string, TellRecord> {
-  try {
-    return JSON.parse(localStorage.getItem(TELLS_KEY) ?? '{}') ?? {};
-  } catch {
-    return {};
-  }
-}
-function saveTells(t: Record<string, TellRecord>) {
-  try {
-    localStorage.setItem(TELLS_KEY, JSON.stringify(t));
-  } catch {
-    /* storage unavailable */
-  }
 }
 
 const SUIT: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
@@ -75,10 +54,10 @@ export class Director {
 
   constructor(
     private game: Game,
-    private table: TableView,
+    private table: TableStage,
     private ui: Overlay,
     private cast: Character[],
-    private camera: Container,
+    private camera: Camera,
     private fxLayer: Container,
     private onFinished: () => void,
   ) {
@@ -113,6 +92,7 @@ export class Director {
       this.markActive();
 
       if (g.isHumanTurn) {
+        await this.table.revealHeroNow();
         const st = g.state();
         const choice = await this.ui.ask(
           g.legal(),
@@ -339,7 +319,7 @@ export class Director {
         this.tableChips = e.stacks.reduce((a, b) => a + b, 0);
         this.lineCooldown = this.lineCooldown.map((c) => Math.max(0, c - 1));
         this.ui.resetPreActions();
-        T.newHand(e.stacks, e.button);
+        T.newHand(e.stacks, e.button, e.bb);
         this.ui.setTalkSeats(this.cast.map((c, seat) => ({ seat, name: c.name, color: c.color, live: seat > 0 && e.stacks[seat] > 0 })));
         this.updateHud();
         const dealt = e.stacks.map((s, i) => (s > 0 ? i : -1)).filter((i) => i >= 0);
@@ -359,14 +339,15 @@ export class Director {
       case 'postAnte': {
         const s = T.seats[e.seat];
         s.setStack(s.stack - e.amount);
-        void T.flyChip(s.L.avatar, { x: 960, y: 357 }, 300);
+        void T.flyChip(s.anchor, POT_POS, 300);
         T.pot += e.amount;
         T.refreshPot();
         break;
       }
       case 'hole':
+        // Your cards arrive face down: hold to squeeze, or they turn over by themselves.
         this.heroHole = e.cards;
-        await T.seats[e.seat].reveal(e.cards);
+        T.startSqueeze(e.cards);
         break;
       case 'act': {
         const s = T.seats[e.seat];
@@ -379,12 +360,12 @@ export class Director {
           s.setTag('弃牌', 0x9a94b8);
         } else if (e.action === 'check') {
           s.setTag(`过牌${secs}`, 0xcfe9df);
+          sfx.play('tick', 1.5);
         } else {
           const verb = e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注';
-          s.setStack(s.stack - e.amount);
-          s.setBet(e.total);
           s.setTag(`${verb}${size}${secs}`, 0xffe08a);
-          void T.flyChip(s.L.avatar, s.betPos, 220);
+          // Heavy bets (the pot or more, or all-in) slam down.
+          await T.bet(e.seat, e.amount, e.total, e.allIn || (e.potPct ?? 0) >= 100);
           // How big and how fast the chips went in is part of what others can read.
           const sizeNote = e.potPct ? `（底池的 ${e.potPct}%）` : '';
           if (e.thinkMs !== undefined) this.did[e.seat].push(`${verb}${sizeNote}前想了 ${(e.thinkMs / 1000).toFixed(1)} 秒`);
@@ -408,11 +389,14 @@ export class Director {
           if (!s.out && !s.folded && !s.allIn) s.setTag('');
         });
         const dramatic = this.runout && this.pres !== 'off';
+        const big = this.pres !== 'off' && T.totalPot() >= this.tableChips * 0.3;
         if (dramatic && e.street === 'river' && this.pres === 'full') {
-          await wait(500);
-          await Promise.all([T.revealBoard(e.cards, true), riverPunch(this.camera)]);
+          await this.camera.push(960, 782, 1.14, 450);
+          await T.revealBoard(e.cards, true, true);
+          this.camera.shake(12, 300);
+          await this.camera.reset(400);
         } else {
-          await T.revealBoard(e.cards, dramatic);
+          await T.revealBoard(e.cards, dramatic, big);
         }
         if (e.equity)
           for (const q of e.equity) {
@@ -440,7 +424,7 @@ export class Director {
         break;
       case 'show': {
         const s = T.seats[e.seat];
-        await s.reveal(e.cards);
+        await s.reveal(e.cards, true);
         if (e.hand) s.showHand(e.hand);
         this.best[e.seat] = e.best;
         if (e.equity)
@@ -463,7 +447,7 @@ export class Director {
         const s = T.seats[e.seat];
         const c = this.cast[e.seat];
         if (e.cards.length === 2) {
-          await s.reveal(e.cards);
+          await s.reveal(e.cards, true);
         } else {
           // One card: flip the matching one (the hero knows which; opponents' order is cosmetic).
           const i = e.seat === 0 ? Math.max(0, this.heroHole.indexOf(e.cards[0])) : 0;
