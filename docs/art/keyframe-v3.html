@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Key frame v3 · 本局主役</title>
+<style>html,body{margin:0;background:#300B0B}canvas{display:block;width:100vw;height:auto}</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// Key frame v3: the "本局主役" moment, staged like the reference illustration.
+// Composition and light only: low camera, one lit hero, dark foreground framing,
+// depth of field, flying chips with motion blur, bloom, haze, vignette and grain.
+// Characters are still placeholder drawings; final rendering comes from illustration.
+const W = 1920, H = 1080;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const VP = { x: 960, y: 360 }; // vanishing point, a bit above the table
+
+function layer() { const c = document.createElement('canvas'); c.width = W; c.height = H; return [c, c.getContext('2d')]; }
+
+// ---------------- room ----------------
+function room(g) {
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#FFD9BC'); bg.addColorStop(0.35, '#F69375'); bg.addColorStop(0.7, '#9E595E'); bg.addColorStop(1, '#300B0B');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // Ceiling: rows of light panels in perspective, converging on VP
+  for (let row = 0; row < 7; row++) {
+    const t0 = row / 7, t1 = (row + 0.55) / 7;
+    for (let col = -5; col <= 5; col++) {
+      const x0 = col * 420, x1 = col * 420 + 260;
+      const p = (x, t) => [VP.x + (x - VP.x * 0 - 0) * (1 - t) * 1.0 + (VP.x - VP.x) * t + (x) * 0, 0];
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const pt = (x, t) => [lerp(960 + x, VP.x, t), lerp(-40, VP.y - 40, t)];
+      const a = pt(x0, t0), b = pt(x1, t0), c2 = pt(x1, t1), d = pt(x0, t1);
+      g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...c2); g.lineTo(...d); g.closePath();
+      g.fillStyle = `rgba(255,246,236,${0.75 - row * 0.08})`;
+      g.shadowColor = '#FFF4EA'; g.shadowBlur = 30; g.fill(); g.shadowBlur = 0;
+    }
+  }
+  // Pillars of light at the sides
+  for (const x of [250, 1670]) {
+    const gr = g.createLinearGradient(x - 70, 0, x + 70, 0);
+    gr.addColorStop(0, 'rgba(255,240,225,0)'); gr.addColorStop(0.5, 'rgba(255,240,225,0.55)'); gr.addColorStop(1, 'rgba(255,240,225,0)');
+    g.fillStyle = gr; g.fillRect(x - 70, 120, 140, 520);
+  }
+}
+
+// ---------------- far casino (bokeh, slot machines, neon) ----------------
+function farCasino(g) {
+  g.filter = 'blur(10px)';
+  for (let i = 0; i < 70; i++) {
+    const x = rnd() * W, y = 260 + rnd() * 280, r = 8 + rnd() * 34;
+    const cols = ['#FFE3C8', '#F5E6E7', '#B46997', '#52C0CF', '#FFD36B', '#E04FB0'];
+    g.fillStyle = cols[Math.floor(rnd() * cols.length)];
+    g.globalAlpha = 0.35 + rnd() * 0.5;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 0.6;
+  for (let i = 0; i < 9; i++) {
+    const x = 60 + i * 210 + rnd() * 40;
+    g.fillStyle = i % 2 ? '#684054' : '#5B2324';
+    g.fillRect(x, 420, 120, 200);
+    g.fillStyle = i % 3 ? '#52C0CF' : '#E04FB0';
+    g.fillRect(x + 20, 440, 80, 50);
+  }
+  g.globalAlpha = 1; g.filter = 'none';
+}
+
+// ---------------- characters ----------------
+function hairShape(g, s) {
+  g.beginPath();
+  g.moveTo(-100 * s, 10 * s);
+  g.bezierCurveTo(-112 * s, -120 * s, -50 * s, -150 * s, 0, -150 * s);
+  g.bezierCurveTo(50 * s, -150 * s, 112 * s, -120 * s, 100 * s, 10 * s);
+  g.lineTo(100 * s, 70 * s); g.quadraticCurveTo(84 * s, 86 * s, 66 * s, 70 * s); g.lineTo(66 * s, -6 * s);
+  g.lineTo(-66 * s, -6 * s); g.lineTo(-66 * s, 70 * s); g.quadraticCurveTo(-84 * s, 86 * s, -100 * s, 70 * s);
+  g.closePath();
+  // cat-ear tufts
+  g.moveTo(-86 * s, -96 * s); g.lineTo(-74 * s, -180 * s); g.lineTo(-36 * s, -136 * s); g.closePath();
+  g.moveTo(86 * s, -96 * s); g.lineTo(74 * s, -180 * s); g.lineTo(36 * s, -136 * s); g.closePath();
+}
+
+function face(g, s, mood) {
+  // skin with warm shading
+  const sk = g.createRadialGradient(-20 * s, -10 * s, 10 * s, 0, 10 * s, 80 * s);
+  sk.addColorStop(0, '#FFF1E6'); sk.addColorStop(1, '#F2B8A0');
+  g.fillStyle = sk; g.beginPath(); g.ellipse(0, 12 * s, 70 * s, 76 * s, 0, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#3A1E2A'; g.lineCap = 'round'; g.lineWidth = 6 * s;
+  if (mood === 'joy') {
+    g.beginPath(); g.moveTo(-44 * s, 10 * s); g.quadraticCurveTo(-28 * s, -8 * s, -12 * s, 10 * s); g.stroke();
+    g.beginPath(); g.moveTo(12 * s, 10 * s); g.quadraticCurveTo(28 * s, -8 * s, 44 * s, 10 * s); g.stroke();
+    // big open grin with a fang
+    g.fillStyle = '#5A1020';
+    g.beginPath(); g.moveTo(-30 * s, 36 * s); g.quadraticCurveTo(0, 90 * s, 30 * s, 36 * s); g.closePath(); g.fill();
+    g.fillStyle = '#E0506A'; g.beginPath(); g.ellipse(0, 62 * s, 16 * s, 9 * s, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#FFFFFF'; g.beginPath(); g.moveTo(14 * s, 37 * s); g.lineTo(22 * s, 37 * s); g.lineTo(18 * s, 48 * s); g.closePath(); g.fill();
+  } else {
+    // shocked: wide eyes, small O mouth
+    g.fillStyle = '#FFFFFF';
+    for (const x of [-26, 26]) { g.beginPath(); g.arc(x * s, 6 * s, 15 * s, 0, Math.PI * 2); g.fill(); g.stroke(); g.fillStyle = '#3A1E2A'; g.beginPath(); g.arc(x * s, 8 * s, 6 * s, 0, Math.PI * 2); g.fill(); g.fillStyle = '#FFFFFF'; }
+    g.fillStyle = '#5A1020'; g.beginPath(); g.ellipse(0, 50 * s, 10 * s, 14 * s, 0, 0, Math.PI * 2); g.fill();
+  }
+  // blush stickers
+  g.fillStyle = 'rgba(255,120,150,0.75)';
+  for (const x of [-46, 46]) { g.beginPath(); g.ellipse(x * s, 32 * s, 15 * s, 8 * s, 0, 0, Math.PI * 2); g.fill(); }
+}
+
+function character(g, x, y, s, hair, suit, mood, armsUp, rim) {
+  g.save(); g.translate(x, y);
+  // torso
+  const tg = g.createLinearGradient(-120 * s, 0, 120 * s, 0);
+  tg.addColorStop(0, suit[1]); tg.addColorStop(0.45, suit[0]); tg.addColorStop(1, suit[1]);
+  g.fillStyle = tg;
+  g.beginPath(); g.moveTo(-90 * s, 120 * s); g.bezierCurveTo(-130 * s, 300 * s, -120 * s, 460 * s, -110 * s, 520 * s);
+  g.lineTo(110 * s, 520 * s); g.bezierCurveTo(120 * s, 460 * s, 130 * s, 300 * s, 90 * s, 120 * s); g.closePath(); g.fill();
+  // arms
+  const skin = g.createLinearGradient(0, -300 * s, 0, 160 * s);
+  skin.addColorStop(0, '#FFF3EA'); skin.addColorStop(1, '#F0B49C');
+  g.fillStyle = skin;
+  const arm = (dir) => {
+    g.beginPath();
+    if (armsUp) {
+      g.moveTo(dir * 70 * s, 120 * s); g.quadraticCurveTo(dir * 170 * s, -20 * s, dir * 250 * s, -190 * s);
+      g.lineTo(dir * 305 * s, -165 * s); g.quadraticCurveTo(dir * 230 * s, 20 * s, dir * 110 * s, 185 * s);
+    } else {
+      g.moveTo(dir * 85 * s, 130 * s); g.quadraticCurveTo(dir * 150 * s, 250 * s, dir * 120 * s, 380 * s);
+      g.lineTo(dir * 90 * s, 380 * s); g.quadraticCurveTo(dir * 110 * s, 260 * s, dir * 60 * s, 160 * s);
+    }
+    g.closePath(); g.fill();
+    if (armsUp) { // open hand + white cuff
+      g.beginPath(); g.ellipse(dir * 285 * s, -205 * s, 40 * s, 46 * s, dir * 0.5, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#F6C7B2'; g.lineWidth = 14 * s; g.lineCap = 'round';
+      for (let f = -2; f <= 2; f++) { g.beginPath(); g.moveTo(dir * 290 * s, -225 * s); g.lineTo(dir * (300 + f * 22) * s, -290 * s + Math.abs(f) * 14 * s); g.stroke(); }
+      g.fillStyle = '#FFFFFF'; g.save(); g.translate(dir * 255 * s, -150 * s); g.rotate(dir * 0.6); g.fillRect(-34 * s, -18 * s, 68 * s, 36 * s); g.restore();
+      g.fillStyle = skin;
+    }
+  };
+  arm(-1); arm(1);
+  // neck + bow tie
+  g.fillStyle = '#F6CDB8'; g.fillRect(-26 * s, 70 * s, 52 * s, 60 * s);
+  g.fillStyle = '#2A1840'; g.beginPath(); g.moveTo(-30 * s, 118 * s); g.lineTo(0, 132 * s); g.lineTo(-30 * s, 148 * s); g.closePath(); g.moveTo(30 * s, 118 * s); g.lineTo(0, 132 * s); g.lineTo(30 * s, 148 * s); g.closePath(); g.fill();
+  // head
+  hairShape(g, s);
+  const hg = g.createLinearGradient(0, -180 * s, 0, 80 * s);
+  hg.addColorStop(0, hair[0]); hg.addColorStop(1, hair[1]);
+  g.fillStyle = hg; g.fill();
+  face(g, s, mood);
+  // bangs
+  g.fillStyle = hg; g.beginPath(); g.moveTo(-72 * s, -10 * s); g.bezierCurveTo(-64 * s, -96 * s, 64 * s, -96 * s, 72 * s, -10 * s); g.lineTo(-72 * s, -10 * s); g.fill();
+  // hair shine
+  g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 8 * s;
+  g.beginPath(); g.arc(-20 * s, -70 * s, 60 * s, Math.PI * 1.1, Math.PI * 1.45); g.stroke();
+  // rim light: warm glow along the silhouette edge
+  if (rim) {
+    g.save(); g.globalCompositeOperation = 'lighter';
+    hairShape(g, s); g.strokeStyle = 'rgba(255,214,170,0.55)'; g.lineWidth = 6 * s; g.shadowColor = '#FFD6AA'; g.shadowBlur = 30 * s; g.stroke();
+    g.restore();
+  }
+  g.restore();
+}
+
+// ---------------- table ----------------
+function table(g) {
+  g.save();
+  g.fillStyle = '#300B0B'; g.beginPath(); g.ellipse(960, 1180, 1250, 470, 0, 0, Math.PI * 2); g.fill();
+  const rim = g.createLinearGradient(0, 710, 0, 800);
+  rim.addColorStop(0, '#C35A55'); rim.addColorStop(1, '#5B2324');
+  g.fillStyle = rim; g.beginPath(); g.ellipse(960, 1180, 1215, 445, 0, 0, Math.PI * 2); g.fill();
+  const felt = g.createRadialGradient(960, 820, 40, 960, 1000, 900);
+  felt.addColorStop(0, '#9BE8EE'); felt.addColorStop(0.35, '#52C0CF'); felt.addColorStop(1, '#1D6E7C');
+  g.fillStyle = felt; g.beginPath(); g.ellipse(960, 1185, 1160, 410, 0, 0, Math.PI * 2); g.fill();
+  // printed lines on the felt
+  g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 4;
+  g.beginPath(); g.ellipse(960, 1200, 900, 300, 0, Math.PI * 1.08, Math.PI * 1.92); g.stroke();
+  // chip stacks with shading
+  const stack = (x, y, n, w) => {
+    for (let i = 0; i < n; i++) {
+      const yy = y - i * w * 0.22;
+      g.fillStyle = '#16121C'; g.beginPath(); g.ellipse(x, yy, w, w * 0.36, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = i % 2 ? '#F7F2EE' : '#2B2533'; g.fillRect(x - w, yy - w * 0.1, w * 0.18, w * 0.1); g.fillRect(x + w * 0.82, yy - w * 0.1, w * 0.18, w * 0.1);
+    }
+    const ty = y - (n - 1) * w * 0.22;
+    g.fillStyle = '#2B2533'; g.beginPath(); g.ellipse(x, ty, w, w * 0.36, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#F7F2EE'; g.lineWidth = w * 0.12; g.setLineDash([w * 0.3, w * 0.25]); g.beginPath(); g.ellipse(x, ty, w * 0.7, w * 0.24, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+  };
+  stack(560, 860, 9, 40); stack(640, 900, 5, 40); stack(1380, 860, 7, 40); stack(1300, 905, 11, 40); stack(960, 880, 4, 36);
+  // cards
+  const card = (x, y, r, txt, red) => { g.save(); g.translate(x, y); g.rotate(r); g.fillStyle = '#FFFBF5'; g.fillRect(-46, -64, 92, 128); g.fillStyle = red ? '#D6334A' : '#22223A'; g.font = 'bold 40px sans-serif'; g.textAlign = 'left'; g.fillText(txt, -38, -18); g.restore(); };
+  card(860, 820, -0.1, 'A♥', true); card(960, 812, 0.02, 'A♠', false); card(1060, 822, 0.12, '9♦', true);
+  // a wine glass catching the light
+  g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 3; g.beginPath(); g.moveTo(1490, 760); g.lineTo(1520, 760); g.lineTo(1515, 815); g.quadraticCurveTo(1505, 830, 1495, 815); g.closePath(); g.stroke();
+  g.fillStyle = 'rgba(160,20,50,0.7)'; g.fillRect(1497, 790, 26, 22);
+  g.restore();
+}
+
+// ---------------- flying chips (motion blur + depth of field) ----------------
+function chip(g, x, y, r, rot, alpha) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.globalAlpha = alpha;
+  g.fillStyle = '#16121C'; g.beginPath(); g.ellipse(0, 0, r, r * 0.55, 0, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#F7F2EE'; g.lineWidth = r * 0.16; g.setLineDash([r * 0.35, r * 0.3]);
+  g.beginPath(); g.ellipse(0, 0, r * 0.68, r * 0.37, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+  g.restore();
+}
+function flyingChips(g, count, depth) {
+  for (let i = 0; i < count; i++) {
+    const a = rnd() * Math.PI * 2, d = 120 + rnd() * 700;
+    const x = 960 + Math.cos(a) * d * 1.3, y = 300 + Math.sin(a) * d * 0.55 - rnd() * 120;
+    if (Math.hypot(x - 960, y - 400) < 200) continue; // never cover the hero's face
+    const r = depth === 'near' ? 40 + rnd() * 40 : 12 + rnd() * 18;
+    const rot = rnd() * Math.PI, vx = Math.cos(a) * 18, vy = Math.sin(a) * 10 - 8;
+    for (let k = 4; k >= 0; k--) chip(g, x - vx * k, y - vy * k, r, rot, k === 0 ? 1 : 0.12);
+  }
+}
+
+// ---------------- foreground: dark spectators framing the shot ----------------
+function foreground(g) {
+  g.save();
+  const dark = '#2A0A0C';
+  // left: curly-haired back of a head + shoulder
+  g.fillStyle = dark;
+  g.beginPath(); g.ellipse(250, 1110, 340, 230, 0, 0, Math.PI * 2); g.fill();
+  for (let i = 0; i < 26; i++) { g.beginPath(); g.arc(150 + rnd() * 220, 800 + rnd() * 130, 34 + rnd() * 20, 0, Math.PI * 2); g.fill(); }
+  // raised hand (shock) on the right side
+  g.beginPath(); g.ellipse(1690, 1120, 360, 240, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(1700, 830, 130, 150, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(1450, 860, 46, 70, -0.4, 0, Math.PI * 2); g.fill();
+  // warm rim light on the foreground shapes
+  g.globalCompositeOperation = 'lighter'; g.strokeStyle = 'rgba(246,147,117,0.5)'; g.lineWidth = 6; g.shadowColor = '#F69375'; g.shadowBlur = 25;
+  g.beginPath(); g.arc(1700, 830, 140, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
+  g.beginPath(); g.arc(260, 860, 120, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+  g.restore();
+}
+
+// ---------------- compose ----------------
+room(ctx);
+farCasino(ctx);
+// side opponents: further back, out of focus, shocked
+{ const [c, g] = layer();
+  character(g, 360, 470, 0.62, ['#FFE08A', '#E0A630'], ['#943A3F', '#5B2324'], 'shock', false, false);
+  character(g, 1560, 470, 0.62, ['#9FE6EE', '#3FA6B6'], ['#2E3A6B', '#1C2244'], 'shock', false, false);
+  ctx.filter = 'blur(3px) saturate(0.85)'; ctx.drawImage(c, 0, 0); ctx.filter = 'none'; }
+// haze between the far layer and the hero
+{ const hz = ctx.createRadialGradient(960, 330, 40, 960, 330, 760);
+  hz.addColorStop(0, 'rgba(255,244,234,0.5)'); hz.addColorStop(1, 'rgba(255,244,234,0)');
+  ctx.fillStyle = hz; ctx.fillRect(0, 0, W, H); }
+flyingChips(ctx, 26, 'far');
+// the hero of the moment: biggest, brightest, rim-lit, arms up
+character(ctx, 960, 400, 1.0, ['#D9CCFF', '#8E7AD8'], ['#4B3A8F', '#2A1F5C'], 'joy', true, true);
+// sash: 本局の主役
+ctx.save(); ctx.translate(960, 400); ctx.rotate(0.55);
+ctx.fillStyle = '#F7C6D9'; ctx.fillRect(-40, 120, 70, 420);
+ctx.fillStyle = '#5B2324'; ctx.font = 'bold 40px "Noto Sans SC", sans-serif';
+'本局の主役'.split('').forEach((ch, i) => ctx.fillText(ch, -26, 190 + i * 62));
+ctx.restore();
+table(ctx);
+flyingChips(ctx, 18, 'far');
+// near chips: big and blurred (depth of field)
+{ const [c, g] = layer(); flyingChips(g, 7, 'near'); ctx.filter = 'blur(7px)'; ctx.drawImage(c, 0, 0); ctx.filter = 'none'; }
+foreground(ctx);
+
+// bloom: blur the bright parts and add them back
+{ const [c, g] = layer(); g.filter = 'blur(24px) brightness(1.1)'; g.drawImage(cv, 0, 0);
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = 0.28; ctx.drawImage(c, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+// warm grade + vignette
+{ ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = 'rgba(255,160,110,0.25)'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+  const v = ctx.createRadialGradient(960, 480, 300, 960, 540, 1150);
+  v.addColorStop(0, 'rgba(48,11,11,0)'); v.addColorStop(0.6, 'rgba(48,11,11,0.15)'); v.addColorStop(1, 'rgba(48,11,11,0.8)');
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H); }
+// film grain
+{ const img = ctx.getImageData(0, 0, W, H); const d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (rnd() - 0.5) * 22; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+  ctx.putImageData(img, 0, 0); }
+
+// minimal UI on top
+ctx.save();
+ctx.font = '900 76px "Noto Sans SC", sans-serif'; ctx.textAlign = 'center';
+ctx.lineWidth = 16; ctx.strokeStyle = '#5B2324'; ctx.strokeText('+4,060', 960, 1000);
+ctx.fillStyle = '#FFD36B'; ctx.fillText('+4,060', 960, 1000);
+ctx.restore();
+</script>
+</body>
+</html>
