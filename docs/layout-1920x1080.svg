@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="960" height="540" font-family="Noto Sans CJK SC, PingFang SC, Microsoft YaHei, sans-serif">
+  <!-- 对局界面线框图：设计分辨率 1920x1080，横屏 -->
+  <rect width="1920" height="1080" fill="#1d1b2e"/>
+  <!-- 安全区（刘海屏左右各留 90px） -->
+  <rect x="90" y="0" width="1740" height="1080" fill="none" stroke="#4a4668" stroke-dasharray="12 10" stroke-width="2"/>
+  <text x="100" y="1068" fill="#6f6a93" font-size="20">安全区 (左右各 90px)</text>
+
+  <!-- 牌桌 -->
+  <ellipse cx="960" cy="500" rx="720" ry="300" fill="#2f6b57" stroke="#8a6d3b" stroke-width="22"/>
+  <ellipse cx="960" cy="500" rx="660" ry="250" fill="none" stroke="#3d8a70" stroke-width="3"/>
+
+  <!-- 底池 + 公共牌 -->
+  <rect x="860" y="335" width="200" height="44" rx="22" fill="#00000066"/>
+  <text x="960" y="365" fill="#ffe08a" font-size="26" text-anchor="middle">底池 1,240</text>
+  <g fill="#f4f1ea" stroke="#c9c2b0" stroke-width="2">
+    <rect x="657" y="400" width="110" height="154" rx="10"/>
+    <rect x="781" y="400" width="110" height="154" rx="10"/>
+    <rect x="905" y="400" width="110" height="154" rx="10"/>
+    <rect x="1029" y="400" width="110" height="154" rx="10" fill="#3a3560" stroke="#6f6a93"/>
+    <rect x="1153" y="400" width="110" height="154" rx="10" fill="#3a3560" stroke="#6f6a93"/>
+  </g>
+  <text x="960" y="590" fill="#cfe9df" font-size="22" text-anchor="middle">公共牌 110×154</text>
+
+  <!-- 对手座位：头像 150×190 + 名牌 -->
+  <g font-size="20" text-anchor="middle">
+    <!-- S3 上 -->
+    <rect x="885" y="40" width="150" height="190" rx="14" fill="#5b4e8c"/>
+    <rect x="875" y="236" width="170" height="56" rx="10" fill="#00000088"/>
+    <text x="960" y="140" fill="#fff">S3 头像</text>
+    <text x="960" y="272" fill="#fff">名字 · 2,350</text>
+    <circle cx="1060" cy="70" r="20" fill="#fff"/><text x="1060" y="77" fill="#000" font-size="18">D</text>
+    <!-- S2 左上 -->
+    <rect x="285" y="150" width="150" height="190" rx="14" fill="#5b4e8c"/>
+    <rect x="275" y="346" width="170" height="56" rx="10" fill="#00000088"/>
+    <text x="360" y="250" fill="#fff">S2 头像</text>
+    <text x="360" y="382" fill="#fff">名字 · 1,980</text>
+    <!-- S4 右上 -->
+    <rect x="1485" y="150" width="150" height="190" rx="14" fill="#5b4e8c"/>
+    <rect x="1475" y="346" width="170" height="56" rx="10" fill="#00000088"/>
+    <text x="1560" y="250" fill="#fff">S4 头像</text>
+    <text x="1560" y="382" fill="#fff">名字 · 2,600</text>
+    <!-- S1 左下 -->
+    <rect x="175" y="545" width="150" height="190" rx="14" fill="#5b4e8c" stroke="#ffd166" stroke-width="6"/>
+    <rect x="165" y="741" width="170" height="56" rx="10" fill="#00000088"/>
+    <text x="250" y="645" fill="#fff">S1 头像</text>
+    <text x="250" y="777" fill="#fff">名字 · 1,420</text>
+    <text x="250" y="530" fill="#ffd166">⏱ 行动中 (金色描边+倒计时环)</text>
+    <!-- S5 右下 -->
+    <rect x="1595" y="545" width="150" height="190" rx="14" fill="#5b4e8c" opacity="0.45"/>
+    <rect x="1585" y="741" width="170" height="56" rx="10" fill="#00000088"/>
+    <text x="1670" y="645" fill="#fff">S5 (已弃牌变暗)</text>
+    <text x="1670" y="777" fill="#fff">名字 · 900</text>
+  </g>
+
+  <!-- 下注筹码：从座位朝桌心方向 -->
+  <g fill="#ffd166" font-size="18" text-anchor="middle">
+    <circle cx="420" cy="590" r="16"/><text x="420" y="625" fill="#fff">S1 下注 80</text>
+  </g>
+
+  <!-- 自己：头像 + 大号手牌 -->
+  <rect x="560" y="840" width="170" height="215" rx="14" fill="#7d5ba6" stroke="#fff" stroke-width="3"/>
+  <text x="645" y="950" fill="#fff" font-size="22" text-anchor="middle">自己的角色</text>
+  <g fill="#f4f1ea" stroke="#c9c2b0" stroke-width="2">
+    <rect x="760" y="840" width="140" height="196" rx="12" transform="rotate(-4 830 938)"/>
+    <rect x="915" y="840" width="140" height="196" rx="12" transform="rotate(4 985 938)"/>
+  </g>
+  <text x="907" y="1066" fill="#cfe9df" font-size="20" text-anchor="middle">手牌 140×196 · 筹码 2,100</text>
+
+  <!-- 操作区 -->
+  <g font-size="22" text-anchor="middle">
+    <g fill="#3a3560" stroke="#6f6a93" stroke-width="2">
+      <rect x="1240" y="820" width="110" height="52" rx="10"/>
+      <rect x="1360" y="820" width="110" height="52" rx="10"/>
+      <rect x="1480" y="820" width="110" height="52" rx="10"/>
+      <rect x="1600" y="820" width="110" height="52" rx="10"/>
+      <rect x="1720" y="820" width="110" height="52" rx="10"/>
+    </g>
+    <g fill="#fff">
+      <text x="1295" y="854">1/3池</text><text x="1415" y="854">1/2池</text><text x="1535" y="854">2/3池</text>
+      <text x="1655" y="854">底池</text><text x="1775" y="854">全下</text>
+    </g>
+    <rect x="1240" y="884" width="590" height="20" rx="10" fill="#4a4668"/>
+    <circle cx="1420" cy="894" r="18" fill="#ffd166"/>
+    <rect x="1240" y="930" width="180" height="110" rx="16" fill="#6b6b7b"/>
+    <rect x="1445" y="930" width="180" height="110" rx="16" fill="#2f7fd6"/>
+    <rect x="1650" y="930" width="180" height="110" rx="16" fill="#d65a2f"/>
+    <g fill="#fff" font-size="30">
+      <text x="1330" y="995">弃牌</text><text x="1535" y="995">跟注 80</text><text x="1740" y="995">加注到 240</text>
+    </g>
+  </g>
+
+  <!-- 顶部 HUD -->
+  <rect x="110" y="20" width="520" height="80" rx="12" fill="#00000077"/>
+  <text x="130" y="55" fill="#fff" font-size="24">第 7 / 18 手 · 盲注 20/40 · 前注 40</text>
+  <text x="130" y="88" fill="#bfb8e6" font-size="20">2 手后升盲 · 当前第 3 名</text>
+  <g fill="#00000077"><circle cx="1650" cy="60" r="34"/><circle cx="1730" cy="60" r="34"/><circle cx="1810" cy="60" r="34" transform="translate(-10 0)"/></g>
+  <g fill="#fff" font-size="18" text-anchor="middle"><text x="1650" y="66">牌谱</text><text x="1730" y="66">表情</text><text x="1800" y="66">设置</text></g>
+
+  <!-- 表情按钮 / 预操作 -->
+  <rect x="110" y="960" width="300" height="80" rx="12" fill="#00000055"/>
+  <text x="130" y="995" fill="#fff" font-size="20">☐ 自动过牌/弃牌</text>
+  <text x="130" y="1027" fill="#fff" font-size="20">☐ 跟任何注</text>
+</svg>
