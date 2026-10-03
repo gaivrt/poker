@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" font-family="ZCOOL QingKe HuangYou, Noto Sans SC, PingFang SC, Microsoft YaHei, WenQuanYi Zen Hei, sans-serif">
+  <!-- 主页提案 v2：赌场大厅里，看板角色站在右侧；左侧是模式入口。人物为占位剪影。 -->
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCCAA6"/><stop offset="0.5" stop-color="#F69375"/><stop offset="1" stop-color="#684054"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.68" cy="0.35" r="0.55">
+      <stop offset="0" stop-color="#FFF4EA" stop-opacity="0.95"/><stop offset="1" stop-color="#FFF4EA" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="blur6"><feGaussianBlur stdDeviation="6"/></filter>
+    <g id="chip"><circle r="22" fill="#1E1A22"/><circle r="14" fill="none" stroke="#F7F2EE" stroke-width="5" stroke-dasharray="7 6"/></g>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#room)"/>
+  <g opacity="0.5" filter="url(#blur6)" fill="#FFF4EA">
+    <polygon points="900,0 1150,0 1330,380 1300,382"/><polygon points="1920,0 1700,0 1360,380 1390,382"/><polygon points="1400,0 1480,0 1350,380 1340,380"/>
+  </g>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <g filter="url(#soft)" opacity="0.75">
+    <rect x="960" y="560" width="900" height="260" rx="130" fill="#52C0CF"/>
+    <circle cx="1000" cy="300" r="40" fill="#F5E6E7"/><circle cx="1800" cy="260" r="50" fill="#B46997"/><circle cx="1650" cy="520" r="30" fill="#FFE3C8"/>
+  </g>
+
+  <!-- 看板角色：胜利姿势，张开双臂，筹码在头顶飞 -->
+  <g transform="translate(1340 560)">
+    <path d="M-60 -80 L-250 -330 L-215 -350 L-20 -110 Z M60 -80 L250 -330 L215 -350 L20 -110 Z" fill="#FFE6D5" stroke="#5B2324" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="-245" cy="-352" r="30" fill="#FFE6D5" stroke="#5B2324" stroke-width="5"/><circle cx="245" cy="-352" r="30" fill="#FFE6D5" stroke="#5B2324" stroke-width="5"/>
+    <path d="M-190 520 C-180 120 -120 20 0 20 C120 20 180 120 190 520 Z" fill="#4B3A8F"/>
+    <path d="M-150 60 L150 300 L130 340 L-170 100 Z" fill="#F5C4D8"/>
+    <text transform="translate(-10 205) rotate(39)" font-size="40" fill="#5B2324" text-anchor="middle">本日の主役</text>
+    <path d="M-44 -20 L44 -20 L36 30 L-36 30 Z" fill="#FFE6D5"/>
+    <path d="M-34 24 L0 44 L34 24 L34 62 L0 44 L-34 62 Z" fill="#3A2550"/>
+    <g transform="translate(0 -170) scale(1.9)">
+      <path d="M-82 -20 C-86 -100 -40 -132 0 -132 C40 -132 86 -100 82 -20 L82 40 C70 52 56 52 50 40 L50 0 L-50 0 L-50 40 C-56 52 -70 52 -82 40 Z" fill="#B9A7F0"/>
+      <path d="M-74 -96 L-60 -150 L-30 -118 Z M74 -96 L60 -150 L30 -118 Z" fill="#B9A7F0"/>
+      <ellipse cx="0" cy="8" rx="56" ry="60" fill="#FFE6D5"/>
+      <path d="M-58 -16 C-50 -66 50 -66 58 -16 L58 -10 L-58 -10 Z" fill="#B9A7F0"/>
+      <path d="M-34 14 q12 -12 24 0 M10 14 q12 -12 24 0" stroke="#3A2A3A" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M-18 32 q18 26 36 0 Z" stroke="#3A2A3A" stroke-width="4" fill="#E0506A"/>
+      <ellipse cx="-36" cy="30" rx="11" ry="6" fill="#FF8FA3"/><ellipse cx="36" cy="30" rx="11" ry="6" fill="#FF8FA3"/>
+    </g>
+  </g>
+  <g>
+    <use href="#chip" transform="translate(1090 150) rotate(20) scale(1.1)"/><use href="#chip" transform="translate(1230 90) scale(0.8)"/>
+    <use href="#chip" transform="translate(1600 130) rotate(-30)"/><use href="#chip" transform="translate(1700 260) scale(0.7)"/>
+    <use href="#chip" transform="translate(1020 300) scale(0.6)"/><use href="#chip" transform="translate(1520 60) scale(0.9)"/>
+  </g>
+  <!-- 角色台词：点角色会换一句 -->
+  <g transform="translate(1660 470) rotate(3)"><rect x="-150" y="-44" width="300" height="88" rx="20" fill="#FFFFFF"/><path d="M-120 40 L-150 80 L-90 42 Z" fill="#FFFFFF"/><text y="12" text-anchor="middle" font-size="32" fill="#5B2324">今天也要赢个痛快！</text></g>
+
+  <!-- 顶栏：玩家信息 -->
+  <g transform="translate(60 40)">
+    <rect width="560" height="90" rx="45" fill="#5B2324" opacity="0.9"/>
+    <circle cx="45" cy="45" r="36" fill="#E04FB0" stroke="#FFE3C8" stroke-width="4"/>
+    <text x="100" y="42" font-size="30" fill="#FFE3C8">玩家昵称</text>
+    <text x="100" y="74" font-size="22" fill="#FCCAA6">白银 II · 1,240 分</text>
+    <rect x="360" y="24" width="170" height="42" rx="21" fill="#FFD36B"/><text x="445" y="54" text-anchor="middle" font-size="24" fill="#5B2324">每日任务 2/3</text>
+  </g>
+  <g fill="#F5E6E7"><circle cx="1800" cy="85" r="44"/></g><text x="1800" y="94" text-anchor="middle" font-size="24" fill="#5B2324">设置</text>
+
+  <!-- 标题 -->
+  <g transform="translate(90 270) rotate(-3)">
+    <text font-size="104" fill="#FFFFFF" stroke="#5B2324" stroke-width="16" paint-order="stroke" letter-spacing="4">二次元德扑</text>
+    <rect x="6" y="28" width="330" height="44" rx="8" fill="#52C0CF"/><text x="22" y="61" font-size="30" fill="#FFFFFF">本日の主役は、あなた。</text>
+  </g>
+
+  <!-- 模式入口：大卡片，像贴在墙上的海报 -->
+  <g transform="translate(90 400)">
+    <g transform="rotate(-2)">
+      <rect width="640" height="230" rx="28" fill="#F0705A" stroke="#FFFFFF" stroke-width="8"/>
+      <text x="40" y="96" font-size="76" fill="#FFFFFF">段位赛</text>
+      <text x="44" y="150" font-size="28" fill="#FFE3C8">快速 18 手 · 标准 30 手 · 真人匹配</text>
+      <circle cx="540" cy="115" r="70" fill="#FFD36B" stroke="#5B2324" stroke-width="6"/><text x="540" y="128" text-anchor="middle" font-size="36" fill="#5B2324">白银</text>
+      <rect x="40" y="172" width="240" height="40" rx="20" fill="#5B2324"/><text x="160" y="200" text-anchor="middle" font-size="24" fill="#FFD36B">开始匹配 ▶</text>
+    </g>
+    <g transform="translate(0 270) rotate(1)">
+      <rect width="310" height="170" rx="24" fill="#2A8E9E" stroke="#FFFFFF" stroke-width="7"/>
+      <text x="30" y="76" font-size="50" fill="#FFFFFF">单人练习</text><text x="32" y="126" font-size="24" fill="#D9F4F6">和 AI 角色对战</text>
+    </g>
+    <g transform="translate(330 270) rotate(-1)">
+      <rect width="310" height="170" rx="24" fill="#BAA6BD" stroke="#FFFFFF" stroke-width="7"/>
+      <text x="30" y="76" font-size="50" fill="#FFFFFF">好友房</text><text x="32" y="126" font-size="24" fill="#F5E6E7">开发中 · 可语音</text>
+    </g>
+  </g>
+  <!-- 次级入口 -->
+  <g font-size="26" text-anchor="middle" fill="#5B2324">
+    <g transform="translate(150 930)"><circle r="58" fill="#F5E6E7" stroke="#B46997" stroke-width="6"/><text y="10">角色</text></g>
+    <g transform="translate(300 930)"><circle r="58" fill="#F5E6E7" stroke="#B46997" stroke-width="6"/><text y="10">图鉴</text></g>
+    <g transform="translate(450 930)"><circle r="58" fill="#F5E6E7" stroke="#B46997" stroke-width="6"/><text y="10">牌谱</text></g>
+    <g transform="translate(600 930)"><circle r="58" fill="#F5E6E7" stroke="#B46997" stroke-width="6"/><text y="10">规则</text></g>
+  </g>
+  <!-- 公告条 -->
+  <g transform="translate(960 1040)"><rect x="-260" y="-26" width="900" height="52" rx="26" fill="#300B0B" opacity="0.75"/><text x="190" y="9" text-anchor="middle" font-size="24" fill="#FFE3C8">公告：测试版 · 心理战系统上线，快去读懂她们的破绽吧</text></g>
+</svg>

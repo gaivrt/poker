@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" font-family="ZCOOL QingKe HuangYou, Noto Sans SC, PingFang SC, Microsoft YaHei, WenQuanYi Zen Hei, sans-serif">
+  <!-- 牌桌构图提案 v2：坐在牌桌前的第一人称视角，暖光赌场 × 青绿牌桌。人物为占位剪影。 -->
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCCAA6"/>
+      <stop offset="0.45" stop-color="#F69375"/>
+      <stop offset="1" stop-color="#5B2324"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.32" r="0.6">
+      <stop offset="0" stop-color="#FFF4EA" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFF4EA" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="felt" cx="0.5" cy="0.25" r="0.75">
+      <stop offset="0" stop-color="#7FDDE6"/>
+      <stop offset="0.55" stop-color="#52C0CF"/>
+      <stop offset="1" stop-color="#2A8E9E"/>
+    </radialGradient>
+    <filter id="blur8"><feGaussianBlur stdDeviation="8"/></filter>
+    <filter id="blur3"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
+    <!-- 占位角色：波波头 + 兽耳发型 + 蝴蝶结；用颜色区分角色 -->
+    <g id="bust">
+      <path d="M-120 330 C-110 150 -80 90 0 90 C80 90 110 150 120 330 Z" fill="var(--body)"/>
+      <path d="M-30 70 L30 70 L24 104 L-24 104 Z" fill="#FFE6D5"/>
+      <path d="M-22 98 L0 112 L22 98 L22 124 L0 112 L-22 124 Z" fill="#3A2550"/>
+      <path d="M-82 -20 C-86 -100 -40 -132 0 -132 C40 -132 86 -100 82 -20 L82 40 C70 52 56 52 50 40 L50 0 L-50 0 L-50 40 C-56 52 -70 52 -82 40 Z" fill="var(--hair)"/>
+      <path d="M-74 -96 L-60 -150 L-30 -118 Z M74 -96 L60 -150 L30 -118 Z" fill="var(--hair)"/>
+      <ellipse cx="0" cy="8" rx="56" ry="60" fill="#FFE6D5"/>
+      <path d="M-58 -16 C-50 -66 50 -66 58 -16 L58 -10 L-58 -10 Z" fill="var(--hair)"/>
+      <path d="M-34 14 q12 -12 24 0 M10 14 q12 -12 24 0" stroke="#3A2A3A" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M-14 38 q14 16 28 0" stroke="#3A2A3A" stroke-width="5" fill="#E0506A" stroke-linecap="round"/>
+      <ellipse cx="-36" cy="30" rx="11" ry="6" fill="#FF8FA3" opacity="0.7"/>
+      <ellipse cx="36" cy="30" rx="11" ry="6" fill="#FF8FA3" opacity="0.7"/>
+    </g>
+  </defs>
+
+  <!-- 房间：暖色顶光，灯带透视汇聚到桌心上方 -->
+  <rect width="1920" height="1080" fill="url(#room)"/>
+  <g opacity="0.55" filter="url(#blur8)" fill="#FFF4EA">
+    <polygon points="0,0 380,0 900,300 860,310"/>
+    <polygon points="1920,0 1540,0 1020,300 1060,310"/>
+    <polygon points="620,0 760,0 940,290 920,292"/>
+    <polygon points="1300,0 1160,0 980,290 1000,292"/>
+  </g>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <!-- 远景：虚化的人群和灯光（背景板，可视差移动） -->
+  <g filter="url(#soft)" opacity="0.8">
+    <circle cx="120" cy="330" r="40" fill="#FFE3C8"/><circle cx="330" cy="290" r="30" fill="#B46997"/>
+    <circle cx="700" cy="250" r="26" fill="#F5E6E7"/><circle cx="1250" cy="260" r="34" fill="#FFE3C8"/>
+    <circle cx="1560" cy="300" r="28" fill="#52C0CF"/><circle cx="1800" cy="340" r="44" fill="#F5E6E7"/>
+    <rect x="80" y="380" width="200" height="160" rx="30" fill="#684054"/>
+    <rect x="1650" y="380" width="200" height="160" rx="30" fill="#684054"/>
+  </g>
+
+  <!-- 对手：半身立绘，围坐在牌桌远侧；越靠两边越近、越大 -->
+  <g style="--hair:#B9A7F0;--body:#4B3A8F"><use href="#bust" transform="translate(960 340) scale(0.95)"/></g>
+  <g style="--hair:#F07FB0;--body:#5E3A78"><use href="#bust" transform="translate(560 380) scale(1.02)"/></g>
+  <g style="--hair:#FFD36B;--body:#943A3F"><use href="#bust" transform="translate(1360 380) scale(1.02)"/></g>
+  <g style="--hair:#7FDDE6;--body:#2E3A6B"><use href="#bust" transform="translate(190 500) scale(1.3)"/></g>
+  <g style="--hair:#F69375;--body:#5B2324"><use href="#bust" transform="translate(1730 500) scale(1.3)"/></g>
+
+  <!-- 牌桌：近处出画，远边是一条弧线 -->
+  <ellipse cx="960" cy="1010" rx="1180" ry="470" fill="#300B0B"/>
+  <ellipse cx="960" cy="1010" rx="1150" ry="445" fill="#943A3F"/>
+  <ellipse cx="960" cy="1015" rx="1100" ry="415" fill="url(#felt)"/>
+  <ellipse cx="960" cy="1020" rx="900" ry="300" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="4"/>
+  <text x="960" y="790" text-anchor="middle" font-size="34" fill="#FFFFFF" fill-opacity="0.35" letter-spacing="12">HOLD'EM · 本日の対局</text>
+
+  <!-- 名牌：贴在桌沿的纸片，带胶带 -->
+  <g font-size="26" text-anchor="middle">
+    <g transform="translate(960 575) rotate(-2)"><rect x="-95" y="-26" width="190" height="56" rx="10" fill="#F5E6E7"/><rect x="-26" y="-36" width="52" height="18" fill="#FFD36B" opacity="0.85"/><text y="12" fill="#5B2324">紫苑 · 2,350</text></g>
+    <g transform="translate(560 640) rotate(2)"><rect x="-95" y="-26" width="190" height="56" rx="10" fill="#F5E6E7"/><text y="12" fill="#5B2324">桃 · 1,980</text></g>
+    <g transform="translate(1360 640) rotate(-1)"><rect x="-95" y="-26" width="190" height="56" rx="10" fill="#F5E6E7"/><text y="12" fill="#5B2324">金 · 2,600</text></g>
+    <g transform="translate(250 760) rotate(3)"><rect x="-95" y="-26" width="190" height="56" rx="10" fill="#F5E6E7"/><text y="12" fill="#5B2324">青 · 1,420</text></g>
+    <g transform="translate(1670 760) rotate(-3)"><rect x="-95" y="-26" width="190" height="56" rx="10" fill="#F5E6E7"/><text y="12" fill="#5B2324">朱 · 900</text></g>
+  </g>
+
+  <!-- 公共牌：透视摆放在桌面中央 -->
+  <g stroke="#C9B9AF" stroke-width="2">
+    <polygon points="700,700 790,700 800,812 690,812" fill="#FFFBF5"/>
+    <polygon points="810,700 900,700 905,812 805,812" fill="#FFFBF5"/>
+    <polygon points="920,700 1010,700 1012,812 918,812" fill="#FFFBF5"/>
+    <polygon points="1030,700 1120,700 1125,812 1025,812" fill="#5E3A78"/>
+    <polygon points="1140,700 1230,700 1240,812 1130,812" fill="#5E3A78"/>
+  </g>
+  <g font-size="40" font-weight="700"><text x="708" y="744" fill="#D6334A">A♥</text><text x="818" y="744" fill="#22223A">K♠</text><text x="926" y="744" fill="#D6334A">9♦</text></g>
+
+  <!-- 底池：黑白筹码堆 -->
+  <g transform="translate(560 790)">
+    <ellipse cx="-40" cy="0" rx="30" ry="11" fill="#1E1A22"/><rect x="-70" y="-30" width="60" height="30" fill="#1E1A22"/><ellipse cx="-40" cy="-30" rx="30" ry="11" fill="#F7F2EE" stroke="#1E1A22" stroke-width="4"/>
+    <ellipse cx="30" cy="6" rx="30" ry="11" fill="#1E1A22"/><rect x="0" y="-40" width="60" height="46" fill="#1E1A22"/><ellipse cx="30" cy="-40" rx="30" ry="11" fill="#F7F2EE" stroke="#1E1A22" stroke-width="4"/>
+  </g>
+  <g transform="translate(560 790)"><rect x="-90" y="20" width="180" height="40" rx="20" fill="#5B2324" opacity="0.85"/><text y="49" text-anchor="middle" font-size="26" fill="#FFD36B">底池 1,240</text></g>
+
+  <!-- 自己：手牌在前景，大而倾斜，下半截出画 -->
+  <g transform="translate(850 990) rotate(-9)"><rect x="-120" y="-170" width="240" height="340" rx="22" fill="#FFFBF5" stroke="#5B2324" stroke-width="4"/><text x="-96" y="-104" font-size="70" font-weight="700" fill="#D6334A">Q♥</text></g>
+  <g transform="translate(1080 1000) rotate(7)"><rect x="-120" y="-170" width="240" height="340" rx="22" fill="#FFFBF5" stroke="#5B2324" stroke-width="4"/><text x="-96" y="-104" font-size="70" font-weight="700" fill="#22223A">Q♣</text></g>
+
+  <!-- 自己的角色：左下角探出半身，像雀魂的自家头像 -->
+  <g style="--hair:#E04FB0;--body:#3A2550"><use href="#bust" transform="translate(150 960) scale(0.9)"/></g>
+  <g transform="translate(160 1040)"><rect x="-120" y="-24" width="240" height="48" rx="24" fill="#5B2324"/><text y="10" text-anchor="middle" font-size="24" fill="#FFE3C8">你 · 1,860 · 白银 II</text></g>
+
+  <!-- 左上 HUD：贴纸风格 -->
+  <g transform="translate(250 70) rotate(-2)"><rect x="-200" y="-40" width="400" height="80" rx="16" fill="#F5E6E7"/><rect x="-170" y="-50" width="70" height="20" fill="#B46997" opacity="0.8"/><text y="-2" text-anchor="middle" font-size="30" fill="#5B2324">第 7 / 18 手</text><text y="30" text-anchor="middle" font-size="22" fill="#9E595E">盲注 20/40 · 2 手后升盲</text></g>
+  <g fill="#F5E6E7"><circle cx="1720" cy="70" r="40"/><circle cx="1820" cy="70" r="40"/></g>
+  <g font-size="22" text-anchor="middle" fill="#5B2324"><text x="1720" y="78">笔记</text><text x="1820" y="78">菜单</text></g>
+
+  <!-- 操作区：像筹码/彩票的大按钮，白色贴纸描边 -->
+  <g font-size="34" text-anchor="middle" fill="#FFFFFF">
+    <g transform="translate(1390 960) rotate(-3)"><rect x="-100" y="-55" width="200" height="110" rx="28" fill="#5B2324" stroke="#FFFFFF" stroke-width="6"/><text y="12">弃牌</text></g>
+    <g transform="translate(1600 950) rotate(1)"><rect x="-100" y="-55" width="200" height="110" rx="28" fill="#2A8E9E" stroke="#FFFFFF" stroke-width="6"/><text y="12">跟注 80</text></g>
+    <g transform="translate(1810 960) rotate(3)"><rect x="-100" y="-55" width="200" height="110" rx="28" fill="#F0705A" stroke="#FFFFFF" stroke-width="6"/><text y="12">加注</text></g>
+  </g>
+  <!-- 心理战入口：收在自家头像旁的两个圆按钮 -->
+  <g><circle cx="330" cy="900" r="38" fill="#F5E6E7" stroke="#B46997" stroke-width="5"/><text x="330" y="910" text-anchor="middle" font-size="24" fill="#5B2324">台词</text>
+     <circle cx="420" cy="960" r="38" fill="#F5E6E7" stroke="#B46997" stroke-width="5"/><text x="420" y="970" text-anchor="middle" font-size="24" fill="#5B2324">表情</text></g>
+</svg>
