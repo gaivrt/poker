@@ -34,6 +34,27 @@ add_library(poker_ai
 target_include_directories(poker_ai PUBLIC ai/include)
 target_link_libraries(poker_ai PUBLIC poker_core)
 
+# ---- app: single-player session facade (the web client's API) ----
+add_library(poker_session app/src/session.cpp)
+target_include_directories(poker_session PUBLIC app/include)
+target_link_libraries(poker_session PUBLIC poker_ai)
+
+if(EMSCRIPTEN)
+  # WebAssembly module for the web client: an ES module with the .wasm inlined,
+  # written next to the TypeScript sources (see scripts/build-wasm.sh).
+  add_executable(poker_wasm web/wasm/bindings.cpp)
+  target_link_libraries(poker_wasm PRIVATE poker_session)
+  target_link_options(poker_wasm PRIVATE
+    -lembind
+    -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createPokerModule
+    -sSINGLE_FILE=1 -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web,node)
+  set_target_properties(poker_wasm PROPERTIES
+    OUTPUT_NAME poker
+    SUFFIX ".js"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/web/src/wasm)
+  return()
+endif()
+
 # ---- tools ----
 add_executable(poker_cli tools/cli/main.cpp)
 target_link_libraries(poker_cli PRIVATE poker_ai)
@@ -50,6 +71,7 @@ add_executable(poker_tests
   tests/test_hand.cpp
   tests/test_tournament.cpp
   tests/test_ai.cpp
+  tests/test_session.cpp
 )
-target_link_libraries(poker_tests PRIVATE poker_ai)
+target_link_libraries(poker_tests PRIVATE poker_session)
 add_test(NAME poker_tests COMMAND poker_tests)

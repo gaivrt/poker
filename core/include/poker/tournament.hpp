@@ -59,6 +59,7 @@ public:
     bool finished() const { return finished_; }
     Hand& startHand();
     Hand* currentHand() { return hand_.get(); }
+    const Hand* currentHand() const { return hand_.get(); }
     void finishHand();
 
     const TournamentConfig& config() const { return config_; }
