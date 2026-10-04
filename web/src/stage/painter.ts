@@ -221,10 +221,12 @@ export function paintBeam(w: number, h: number, x: number, top: number, bottom: 
 /** The table is a racetrack (stadium) seen from your seat at the middle of its near
  *  long side. Top-down units: the straight part is 2a long, the ends are half circles
  *  of radius 1, the table is centred zc ahead of the camera. Screen x = 960 + f·x/z,
- *  screen y = horizon + F/z. The numbers put the far rail at y≈560 (behind the board,
- *  in front of the far players), the ends at x≈200 and 1720, and the near rail just
- *  above the bottom edge, so the seats in layout.ts fall on the rail and felt. */
-export const TABLE = { a: 1, zc: 1.92, f: 730, F: 672, horizon: 330, rail: 0.22 };
+ *  screen y = horizon + F/z (a raised camera tilted down, shown with a shifted lens,
+ *  so the horizon is above the frame). A normal ~51° lens: the far rail is a straight
+ *  edge at y≈575, the ends are widest at y≈767 near the frame edges, the near rail runs
+ *  along the bottom with its corners curving back in. The seats in layout.ts fall on
+ *  the rail and felt. */
+export const TABLE = { a: 1, zc: 4.33, f: 2013, F: 4438, horizon: -258, rail: 0.22 };
 
 /** Top-down (x, z) to screen. */
 export function tableToScreen(x: number, z: number): [number, number] {
