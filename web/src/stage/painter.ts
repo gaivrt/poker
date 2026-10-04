@@ -218,90 +218,134 @@ export function paintBeam(w: number, h: number, x: number, top: number, bottom: 
 // Table
 // ---------------------------------------------------------------------------
 
-export const TABLE = { cx: 960, cy: 1010, rx: 1180, ry: 470 };
+/** The table is a racetrack (stadium) seen from your seat at the middle of its near
+ *  long side. Top-down units: the straight part is 2a long, the ends are half circles
+ *  of radius 1, the table is centred zc ahead of the camera. Screen x = 960 + f·x/z,
+ *  screen y = horizon + F/z. The numbers put the far rail at y≈560 (behind the board,
+ *  in front of the far players), the ends at x≈200 and 1720, and the near rail just
+ *  above the bottom edge, so the seats in layout.ts fall on the rail and felt. */
+export const TABLE = { a: 1, zc: 1.92, f: 730, F: 672, horizon: 330, rail: 0.22 };
+
+/** Top-down (x, z) to screen. */
+export function tableToScreen(x: number, z: number): [number, number] {
+  const { f, F, horizon } = TABLE;
+  return [960 + (f * x) / z, horizon + F / z];
+}
+
+/** The outline of the table shrunk by `inset` (0 = outer edge of the rail), as screen points. */
+export function tableOutline(inset = 0, steps = 48): number[] {
+  const { a, zc } = TABLE;
+  const r = 1 - inset;
+  const pts: number[] = [];
+  const push = (x: number, z: number) => pts.push(...tableToScreen(x, z));
+  // right end, from the near side round to the far side, then the left end back
+  for (let i = 0; i <= steps; i++) {
+    const t = -Math.PI / 2 + (i / steps) * Math.PI;
+    push(a + Math.cos(t) * r, zc + Math.sin(t) * r);
+  }
+  for (let i = 0; i <= steps; i++) {
+    const t = Math.PI / 2 + (i / steps) * Math.PI;
+    push(-a + Math.cos(t) * r, zc + Math.sin(t) * r);
+  }
+  return pts;
+}
+
+function outlinePath(g: CanvasRenderingContext2D, pts: number[]) {
+  g.beginPath();
+  g.moveTo(pts[0], pts[1]);
+  for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+  g.closePath();
+}
 
 /** White where the table is (its outer rail edge), slightly feathered: cuts painted
  *  table art out of the full frame it was generated in. */
 export function paintTableMask(w: number, h: number): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
-  const { cx, cy, rx, ry } = TABLE;
   g.filter = 'blur(1.5px)';
   g.fillStyle = '#fff';
-  g.beginPath();
-  g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  outlinePath(g, tableOutline(0));
   g.fill();
   return c;
 }
 
-/** The table seen from the player's seat: black leather rail with a gold inlay,
- *  emerald felt lit by a spotlight over the board, a gilded betting line. */
+/** The racetrack table: a padded black leather rail with stitching, a brass inlay,
+ *  dark green felt lit by a pool of light over the board, and a betting line. */
 export function paintTable(w: number, h: number, plain = false): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
-  const { cx, cy, rx, ry } = TABLE;
-  const ell = (dx: number, dy: number, a0 = 0, a1 = Math.PI * 2, oy = 0) => {
-    g.beginPath();
-    g.ellipse(cx, cy + oy, rx - dx, ry - dy, 0, a0, a1);
-  };
-  // shadow on the floor
+  const outer = tableOutline(0);
+  const inner = tableOutline(TABLE.rail);
+  const [, farY] = tableToScreen(0, TABLE.zc + 1);
+  const [, midY] = tableToScreen(0, TABLE.zc);
+
+  // shadow on the floor around the table
   g.fillStyle = 'rgba(0,0,0,0.6)';
-  g.filter = 'blur(24px)';
-  ell(-40, -40, 0, Math.PI * 2, -10);
+  g.filter = 'blur(26px)';
+  g.save();
+  g.translate(0, 14);
+  outlinePath(g, outer);
   g.fill();
+  g.restore();
   g.filter = 'none';
 
-  // leather rail
-  const rim = g.createLinearGradient(0, cy - ry, 0, cy - ry + 110);
-  rim.addColorStop(0, '#45403a');
-  rim.addColorStop(0.18, '#2a2724');
-  rim.addColorStop(1, '#0e0d0c');
+  // leather rail: dark, catching light on its rounded top (lighter far away, where
+  // we see the top of the padding, and darker toward us)
+  const rim = g.createLinearGradient(0, farY - 10, 0, h);
+  rim.addColorStop(0, '#4a4440');
+  rim.addColorStop(0.08, '#2b2725');
+  rim.addColorStop(0.45, '#171514');
+  rim.addColorStop(1, '#0a0909');
   g.fillStyle = rim;
-  ell(0, 0);
+  outlinePath(g, outer);
   g.fill();
-  // stitching and specular along the rail
-  g.strokeStyle = 'rgba(255,235,210,0.28)';
+  // the highlight running along the top of the padding
+  g.strokeStyle = 'rgba(255,238,215,0.22)';
   g.lineWidth = 3;
-  ell(10, 8, Math.PI * 1.05, Math.PI * 1.95);
+  g.filter = 'blur(1.5px)';
+  outlinePath(g, tableOutline(TABLE.rail * 0.42));
   g.stroke();
-  g.setLineDash([7, 9]);
-  g.strokeStyle = rgba(PAL.beige, 0.25);
-  g.lineWidth = 1.5;
-  ell(26, 22, Math.PI * 1.03, Math.PI * 1.97);
+  g.filter = 'none';
+  // stitching on both edges of the padding
+  g.setLineDash([7, 8]);
+  g.strokeStyle = rgba(PAL.beige, 0.22);
+  g.lineWidth = 1.4;
+  outlinePath(g, tableOutline(TABLE.rail * 0.12));
+  g.stroke();
+  outlinePath(g, tableOutline(TABLE.rail * 0.78));
   g.stroke();
   g.setLineDash([]);
 
-  // gold inlay between rail and felt
-  g.strokeStyle = rgba(PAL.beige, 0.6);
-  g.lineWidth = 5;
-  g.shadowColor = rgba(PAL.paper, 0.8);
-  g.shadowBlur = 14;
-  ell(40, 47, 0, Math.PI * 2, 6);
+  // brass inlay between rail and felt
+  g.strokeStyle = '#b89a62';
+  g.lineWidth = 3;
+  outlinePath(g, tableOutline(TABLE.rail * 0.97));
   g.stroke();
-  g.shadowBlur = 0;
+  g.strokeStyle = 'rgba(255,230,180,0.45)';
+  g.lineWidth = 1;
+  outlinePath(g, tableOutline(TABLE.rail * 0.94));
+  g.stroke();
 
-  // felt with the spotlight pool over the board
-  const felt = g.createRadialGradient(cx, cy - 250, 30, cx, cy - 120, rx * 0.95);
+  // felt with the pool of light over the board
+  g.save();
+  outlinePath(g, inner);
+  g.clip();
+  const felt = g.createRadialGradient(960, midY + 40, 20, 960, midY + 60, 900);
   felt.addColorStop(0, hex(0x5d8073));
-  felt.addColorStop(0.22, hex(PAL.feltHi));
-  felt.addColorStop(0.55, hex(PAL.felt));
-  felt.addColorStop(1, '#121c19');
+  felt.addColorStop(0.25, hex(PAL.feltHi));
+  felt.addColorStop(0.6, hex(PAL.felt));
+  felt.addColorStop(1, '#101a17');
   g.fillStyle = felt;
-  ell(45, 52, 0, Math.PI * 2, 6);
-  g.fill();
-
+  g.fillRect(0, 0, w, h);
   // felt fibre
   const rnd = seeded(11);
-  g.save();
-  ell(45, 52, 0, Math.PI * 2, 6);
-  g.clip();
-  for (let i = 0; i < 14000; i++) {
+  for (let i = 0; i < 16000; i++) {
     g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,20,15,0.08)';
-    g.fillRect(rnd() * w, cy - ry + rnd() * ry * 2, 2, 1.5);
+    g.fillRect(rnd() * w, farY + rnd() * (h - farY), 2, 1.5);
   }
   // the rail's shadow falling on the felt edge
-  g.strokeStyle = 'rgba(0,0,0,0.45)';
-  g.lineWidth = 40;
-  g.filter = 'blur(14px)';
-  ell(45, 52, 0, Math.PI * 2, 6);
+  g.strokeStyle = 'rgba(0,0,0,0.5)';
+  g.lineWidth = 34;
+  g.filter = 'blur(12px)';
+  outlinePath(g, inner);
   g.stroke();
   g.filter = 'none';
   g.restore();
@@ -309,44 +353,15 @@ export function paintTable(w: number, h: number, plain = false): HTMLCanvasEleme
   // the painting guide (docs/11 §4.3) leaves out the printed marks
   if (plain) return c;
 
-  // gilded betting line, double
-  g.strokeStyle = rgba(PAL.beige, 0.55);
-  g.lineWidth = 2.5;
-  g.beginPath();
-  g.ellipse(cx, cy + 20, rx * 0.74, ry * 0.62, 0, Math.PI * 1.08, Math.PI * 1.92);
-  g.stroke();
-  g.strokeStyle = rgba(PAL.beige, 0.25);
-  g.lineWidth = 1.5;
-  g.beginPath();
-  g.ellipse(cx, cy + 20, rx * 0.74 - 14, ry * 0.62 - 10, 0, Math.PI * 1.09, Math.PI * 1.91);
-  g.stroke();
-
-  // the house crest, printed in gold leaf
-  g.save();
-  g.translate(cx, cy - ry * 0.21);
-  g.scale(1, 0.55);
-  g.fillStyle = rgba(PAL.beige, 0.22);
-  g.font = 'italic 700 46px Georgia, "Noto Serif SC", serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText('HOLD\u2019EM', 0, 0);
-  g.strokeStyle = rgba(PAL.beige, 0.2);
+  // betting line: a smaller racetrack, double
+  g.strokeStyle = rgba(PAL.beige, 0.4);
   g.lineWidth = 2;
-  for (const s of [-1, 1]) {
-    g.beginPath();
-    g.moveTo(s * 210, 0);
-    g.lineTo(s * 330, 0);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(s * 196, -8);
-    g.lineTo(s * 204, 0);
-    g.lineTo(s * 196, 8);
-    g.lineTo(s * 188, 0);
-    g.closePath();
-    g.fillStyle = rgba(PAL.beige, 0.22);
-    g.fill();
-  }
-  g.restore();
+  outlinePath(g, tableOutline(0.5));
+  g.stroke();
+  g.strokeStyle = rgba(PAL.beige, 0.18);
+  g.lineWidth = 1.2;
+  outlinePath(g, tableOutline(0.53));
+  g.stroke();
   return c;
 }
 

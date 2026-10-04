@@ -148,24 +148,26 @@ Dark warm greys and browns, very low saturation, small warm highlights only, sha
 
 ### 4.3 牌桌 `table-top`（16:9，在底稿上加材质）
 
-代码画的桌子没有质感，桌子也改成插画。桌子的形状必须和座位、公共牌、名牌的坐标对齐，所以**不从零生成，而是在底稿上改**：
+桌子是职业牌桌的**跑道形**（两条长直边、两头半圆，长宽约 2:1），从你坐的长边中间看过去：远处的长边是一条直线，两头的半圆在左右两边，近处的长边压在画面底部。形状在代码里按透视算出（`web/src/stage/painter.ts` 的 `TABLE`），座位、公共牌、名牌都按它摆。
 
-1. 下载底稿 `art-src/guides/table-guide.png`：现在的背景加上游戏里代码画的桌子（去掉了字和线），位置和形状就是游戏里的样子。
+桌子插画必须和这个形状对齐，所以**不从零生成，而是在底稿上改**：
+
+1. 下载底稿 `art-src/guides/table-guide.png`：现在的背景加上游戏里代码画的桌子（去掉了下注线），位置和形状就是游戏里的样子。
 2. 上传底稿，粘贴下面的说明。
-3. 交回整张图（背景也在里面没关系），代码按桌子的外沿椭圆自动抠出来。**唯一的要求是桌子外沿的轮廓不要变**，变了会露出背景或者切掉桌沿。
+3. 交回整张图（背景也在里面没关系），代码按桌子的外沿自动抠出来。**唯一的要求是桌子外沿的轮廓不要变**，变了会露出背景或者切掉桌沿。
 
-v1 的教训：说"Repaint"，Gemini 会另画一张俯视的小桌子，还自己加上印刷线、牌框、筹码槽和杯托。所以要说"Edit"，强调我们就坐在桌边（近处的桌沿在画面外），并逐个点名不要的东西。
+v1 的教训：Gemini 会自己加上印刷线、牌框、筹码槽和杯托，画成亮漆木纹的 3D 渲染风。说明里要逐个点名不要。
 
 ```
-Edit the attached image. Do not change the composition at all: same camera, same perspective, same room, and the table keeps exactly its current shape, size and position. Only improve the MATERIALS and LIGHTING of the table so it looks like a luxurious, high-end poker table, painted in the same anime background art style as the room.
+Edit the attached image. Do not change the composition: same camera, same perspective, same room. The poker table keeps exactly its current racetrack shape (two long straight sides joined by two half-round ends), size and position; the outer edge of the rail must stay exactly where it is. Only improve the MATERIALS and LIGHTING of the table so it looks like a professional, high-end casino poker table, painted in the same anime background art style as the room.
 
-We are sitting at this table: its near side is below the bottom edge of the image and must not be visible. The table is very large and runs off the left, right and bottom edges of the image. The curved dark band is the far rail; keep its curve exactly where it is.
+We are sitting at the middle of the near long side: the near rail runs along the bottom of the image, the far rail is the long straight edge across the middle, and the two rounded ends are at the left and right.
 
-Materials: the rail is padded black leather with fine stitching and soft glossy highlights along its rounded top; a thin polished brass inlay runs between the rail and the playing surface; the playing surface is deep dark-green wool felt with a visible fine fabric texture.
+Materials: a thick padded rail of black leather with fine stitching and soft glossy highlights along its rounded top; a thin polished brass inlay between the rail and the playing surface; the playing surface is deep dark-green wool felt with a visible fine fabric texture.
 
-Lighting: warm light from the chandelier makes a soft oval pool of light in the middle of the felt, falling off to dark toward the edges; the rail casts a soft shadow onto the edge of the felt. Painted, not photorealistic, not a 3D render, no varnished wood.
+Lighting: warm light from the chandelier makes a soft pool of light in the middle of the felt, falling off to dark toward the ends; the rail casts a soft shadow onto the edge of the felt. Painted, not photorealistic, not a 3D render, no varnished wood.
 
-Keep the felt completely plain: no printed lines, no betting lines, no card boxes, no dealer tray, no chip rack, no cup holders, no cards, no chips, no text, no logos. Same 16:9 framing.
+Keep the felt completely plain: no printed lines, no card boxes, no dealer tray, no chip rack, no cup holders, no cards, no chips, no text, no logos. Same 16:9 framing.
 ```
 
 ## 5. 其余 5 个角色（凛定稿后再做）
