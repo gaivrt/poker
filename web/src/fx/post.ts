@@ -86,9 +86,9 @@ function redEdge(w: number, h: number): HTMLCanvasElement {
   c.height = h;
   const g = c.getContext('2d')!;
   const v = g.createRadialGradient(w / 2, h / 2, h * 0.28, w / 2, h / 2, w * 0.58);
-  v.addColorStop(0, 'rgba(210,20,45,0)');
-  v.addColorStop(0.5, 'rgba(210,20,45,0.28)');
-  v.addColorStop(1, 'rgba(170,10,30,0.95)');
+  v.addColorStop(0, 'rgba(190,85,50,0)');
+  v.addColorStop(0.5, 'rgba(190,85,50,0.28)');
+  v.addColorStop(1, 'rgba(120,50,30,0.9)');
   g.fillStyle = v;
   g.fillRect(0, 0, w, h);
   return c;

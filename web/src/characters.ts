@@ -179,7 +179,7 @@ export const EXPRESSION_COLOR: Record<Expression, number> = {
   [Expression.Calm]: 0x8a86a6,
   [Expression.Smug]: 0xe0a630,
   [Expression.Nervous]: 0x4f8fd6,
-  [Expression.Smile]: 0xe0709a,
+  [Expression.Smile]: 0xd97757,
   [Expression.Angry]: 0xd64545,
 };
 

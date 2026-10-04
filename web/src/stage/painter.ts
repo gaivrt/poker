@@ -2,8 +2,8 @@
 // Every piece here is replaced automatically when a matching PNG is dropped into
 // web/public/art/ (see assets.ts and docs/08 §6).
 //
-// The look follows docs/10 ("gilded night"): a dark, luxurious casino lounge, warm gold
-// chandeliers, one spotlight on an emerald table, black leather and gold trim.
+// The look follows docs/10: a warm, quiet private card room in dark neutrals, soft
+// light, a dark sage table, beige trim and a single terracotta accent.
 // Until the character art arrives, the players are silhouettes with rim light.
 
 export type Pose = 'idle' | 'smug' | 'nervous' | 'angry' | 'shock' | 'cry' | 'win';
@@ -14,19 +14,21 @@ export interface Look {
   hair: HairStyle;
 }
 
-/** The palette (docs/10 §2). */
+/** The palette (docs/10 §2): warm dark neutrals, beige frames, one terracotta accent. */
 export const PAL = {
-  night: 0x0d080c,
-  plum: 0x1c0e18,
-  wine: 0x3a0f1c,
-  crimson: 0xb81d3c,
-  gold: 0xe8c27a,
-  goldHi: 0xffe3a3,
-  goldLo: 0x8a6a2f,
-  ivory: 0xf6ecd9,
-  felt: 0x17574b,
-  feltHi: 0x2f8f7a,
-  leather: 0x1a1112,
+  night: 0x1a1918,   // warm near-black
+  plum: 0x262624,    // container
+  wine: 0x33302c,    // walls
+  leather: 0x1f1e1d,
+  terracotta: 0xd97757, // the one loud colour: calls to action, all-in, danger
+  beige: 0xe4dbcd,   // frames, thin lines
+  paper: 0xfaf9f5,   // main text and highlights
+  muted: 0x8f877b,   // secondary
+  ivory: 0xf2ece0,   // card faces
+  blue: 0x6a9ccd,
+  sage: 0xbdd2cb,
+  felt: 0x2c4a41,    // dark sage felt
+  feltHi: 0x47695e,
 };
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -61,17 +63,17 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
   const [c, g] = canvas(w, h);
   const rnd = seeded(seed);
   const bg = g.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, '#120810');
-  bg.addColorStop(0.35, '#2a0d1a');
-  bg.addColorStop(0.62, '#200a14');
-  bg.addColorStop(1, '#09050a');
+  bg.addColorStop(0, '#161514');
+  bg.addColorStop(0.35, '#2b2825');
+  bg.addColorStop(0.62, '#23211e');
+  bg.addColorStop(1, '#100f0e');
   g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
 
   // warm glow behind the focus
   const glow = g.createRadialGradient(vp.x, vp.y, 20, vp.x, vp.y, w * 0.55);
-  glow.addColorStop(0, 'rgba(255,190,120,0.30)');
-  glow.addColorStop(0.4, 'rgba(180,70,60,0.14)');
+  glow.addColorStop(0, 'rgba(250,240,220,0.20)');
+  glow.addColorStop(0.4, 'rgba(217,119,87,0.06)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = glow;
   g.fillRect(0, 0, w, h);
@@ -82,13 +84,13 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
   for (let i = 0; i < 9; i++) {
     const x = (i + 0.5) * (w / 9);
     const gr = g.createLinearGradient(x - 18, 0, x + 18, 0);
-    gr.addColorStop(0, rgba(PAL.goldLo, 0));
-    gr.addColorStop(0.5, rgba(PAL.gold, 0.28));
-    gr.addColorStop(1, rgba(PAL.goldLo, 0));
+    gr.addColorStop(0, rgba(PAL.muted, 0));
+    gr.addColorStop(0.5, rgba(PAL.beige, 0.28));
+    gr.addColorStop(1, rgba(PAL.muted, 0));
     g.fillStyle = gr;
     g.fillRect(x - 18, wallTop, 36, wallBot - wallTop);
     // fluting
-    g.strokeStyle = rgba(PAL.goldHi, 0.12);
+    g.strokeStyle = rgba(PAL.paper, 0.12);
     g.lineWidth = 2;
     for (const dx of [-8, 0, 8]) {
       g.beginPath();
@@ -99,13 +101,13 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
     // arch between pilasters
     if (i < 8) {
       const ax = x + w / 18;
-      g.strokeStyle = rgba(PAL.gold, 0.16);
+      g.strokeStyle = rgba(PAL.beige, 0.16);
       g.lineWidth = 3;
       g.beginPath();
       g.arc(ax, wallTop + 120, w / 18 - 26, Math.PI, 0);
       g.stroke();
       // sunburst inside the arch
-      g.strokeStyle = rgba(PAL.gold, 0.07);
+      g.strokeStyle = rgba(PAL.beige, 0.07);
       g.lineWidth = 2;
       for (let k = 1; k < 8; k++) {
         const a = Math.PI + (k / 8) * Math.PI;
@@ -117,7 +119,7 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
     }
   }
   // a gold cornice line
-  g.fillStyle = rgba(PAL.gold, 0.2);
+  g.fillStyle = rgba(PAL.beige, 0.2);
   g.fillRect(0, wallTop - 6, w, 4);
   g.filter = 'none';
 
@@ -125,12 +127,12 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
   g.filter = 'blur(14px)';
   for (let i = 0; i < 12; i++) {
     g.globalAlpha = 0.5;
-    g.fillStyle = i % 2 ? '#3a1222' : '#170910';
+    g.fillStyle = i % 2 ? '#34302b' : '#1c1b19';
     g.beginPath();
     g.ellipse(rnd() * w, h * 0.6 + rnd() * h * 0.08, 90 + rnd() * 80, 40 + rnd() * 30, 0, 0, Math.PI * 2);
     g.fill();
   }
-  const bokeh = ['#FFD9A0', '#FFB870', '#E8C27A', '#FF8A6A', '#C24A6A', '#FFF0D0'];
+  const bokeh = ['#F0E6D2', '#E4DBCD', '#D9C7A8', '#D97757', '#BDD2CB', '#FAF9F5'];
   for (let i = 0; i < 70; i++) {
     g.globalAlpha = 0.18 + rnd() * 0.4;
     g.fillStyle = bokeh[Math.floor(rnd() * bokeh.length)];
@@ -145,16 +147,16 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
   const chands = [0.18, 0.5, 0.82].map((t) => ({ x: w * t + (rnd() - 0.5) * 60, y: h * (0.06 + rnd() * 0.05) }));
   for (const ch of chands) {
     const halo = g.createRadialGradient(ch.x, ch.y, 4, ch.x, ch.y, 260);
-    halo.addColorStop(0, 'rgba(255,236,190,0.75)');
-    halo.addColorStop(0.25, 'rgba(255,200,120,0.25)');
-    halo.addColorStop(1, 'rgba(255,170,90,0)');
+    halo.addColorStop(0, 'rgba(250,244,230,0.55)');
+    halo.addColorStop(0.25, 'rgba(228,219,205,0.16)');
+    halo.addColorStop(1, 'rgba(228,219,205,0)');
     g.fillStyle = halo;
     g.fillRect(ch.x - 280, ch.y - 280, 560, 560);
     g.filter = 'blur(1.5px)';
     for (let k = 0; k < 40; k++) {
       const a = rnd() * Math.PI;
       const r = 20 + rnd() * 90;
-      g.fillStyle = rnd() < 0.3 ? '#FFFFFF' : '#FFE3A3';
+      g.fillStyle = rnd() < 0.3 ? '#FFFFFF' : '#F0E6D2';
       g.globalAlpha = 0.5 + rnd() * 0.5;
       g.beginPath();
       g.arc(ch.x + Math.cos(a) * r, ch.y + Math.sin(a) * r * 0.55, 1.5 + rnd() * 2.5, 0, Math.PI * 2);
@@ -170,23 +172,23 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
     for (let f = 0; f < 6; f++) {
       const fx = x0 + f * 35;
       const gr = g.createLinearGradient(fx, 0, fx + 35, 0);
-      gr.addColorStop(0, '#2a0510');
-      gr.addColorStop(0.5, f % 2 ? '#6e0f22' : '#58091b');
-      gr.addColorStop(1, '#22040c');
+      gr.addColorStop(0, '#1d1c1a');
+      gr.addColorStop(0.5, f % 2 ? '#3d3833' : '#332f2b');
+      gr.addColorStop(1, '#171614');
       g.fillStyle = gr;
       g.fillRect(fx, 0, 36, h);
     }
     const fade = g.createLinearGradient(side ? w - 210 : 210, 0, side ? w - 320 : 320, 0);
-    fade.addColorStop(0, 'rgba(10,3,6,0.55)');
-    fade.addColorStop(1, 'rgba(10,3,6,0)');
+    fade.addColorStop(0, 'rgba(16,15,14,0.55)');
+    fade.addColorStop(1, 'rgba(16,15,14,0)');
     g.fillStyle = fade;
     g.fillRect(side ? w - 320 : 210, 0, 110, h);
   }
 
   // haze and a darker floor
   const floor = g.createLinearGradient(0, h * 0.55, 0, h);
-  floor.addColorStop(0, 'rgba(8,3,6,0)');
-  floor.addColorStop(1, 'rgba(8,3,6,0.85)');
+  floor.addColorStop(0, 'rgba(14,13,12,0)');
+  floor.addColorStop(1, 'rgba(14,13,12,0.85)');
   g.fillStyle = floor;
   g.fillRect(0, h * 0.55, w, h * 0.45);
   return c;
@@ -197,8 +199,8 @@ export function paintBeam(w: number, h: number, x: number, top: number, bottom: 
   const [c, g] = canvas(w, h);
   const gr = g.createLinearGradient(0, top, 0, bottom);
   gr.addColorStop(0, 'rgba(255,230,180,0.0)');
-  gr.addColorStop(0.25, 'rgba(255,225,170,0.10)');
-  gr.addColorStop(1, 'rgba(255,215,150,0.18)');
+  gr.addColorStop(0.25, 'rgba(250,240,222,0.08)');
+  gr.addColorStop(1, 'rgba(250,240,222,0.14)');
   g.filter = 'blur(30px)';
   g.fillStyle = gr;
   g.beginPath();
@@ -236,9 +238,9 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
 
   // leather rail
   const rim = g.createLinearGradient(0, cy - ry, 0, cy - ry + 110);
-  rim.addColorStop(0, '#4a2f2a');
-  rim.addColorStop(0.18, '#2a1a18');
-  rim.addColorStop(1, '#0c0707');
+  rim.addColorStop(0, '#45403a');
+  rim.addColorStop(0.18, '#2a2724');
+  rim.addColorStop(1, '#0e0d0c');
   g.fillStyle = rim;
   ell(0, 0);
   g.fill();
@@ -248,16 +250,16 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
   ell(10, 8, Math.PI * 1.05, Math.PI * 1.95);
   g.stroke();
   g.setLineDash([7, 9]);
-  g.strokeStyle = rgba(PAL.gold, 0.25);
+  g.strokeStyle = rgba(PAL.beige, 0.25);
   g.lineWidth = 1.5;
   ell(26, 22, Math.PI * 1.03, Math.PI * 1.97);
   g.stroke();
   g.setLineDash([]);
 
   // gold inlay between rail and felt
-  g.strokeStyle = rgba(PAL.gold, 0.95);
+  g.strokeStyle = rgba(PAL.beige, 0.6);
   g.lineWidth = 5;
-  g.shadowColor = rgba(PAL.goldHi, 0.8);
+  g.shadowColor = rgba(PAL.paper, 0.8);
   g.shadowBlur = 14;
   ell(40, 47, 0, Math.PI * 2, 6);
   g.stroke();
@@ -265,10 +267,10 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
 
   // felt with the spotlight pool over the board
   const felt = g.createRadialGradient(cx, cy - 250, 30, cx, cy - 120, rx * 0.95);
-  felt.addColorStop(0, hex(0x3aa38a));
+  felt.addColorStop(0, hex(0x5d8073));
   felt.addColorStop(0.22, hex(PAL.feltHi));
   felt.addColorStop(0.55, hex(PAL.felt));
-  felt.addColorStop(1, '#051c17');
+  felt.addColorStop(1, '#121c19');
   g.fillStyle = felt;
   ell(45, 52, 0, Math.PI * 2, 6);
   g.fill();
@@ -292,12 +294,12 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
   g.restore();
 
   // gilded betting line, double
-  g.strokeStyle = rgba(PAL.gold, 0.55);
+  g.strokeStyle = rgba(PAL.beige, 0.55);
   g.lineWidth = 2.5;
   g.beginPath();
   g.ellipse(cx, cy + 20, rx * 0.74, ry * 0.62, 0, Math.PI * 1.08, Math.PI * 1.92);
   g.stroke();
-  g.strokeStyle = rgba(PAL.gold, 0.25);
+  g.strokeStyle = rgba(PAL.beige, 0.25);
   g.lineWidth = 1.5;
   g.beginPath();
   g.ellipse(cx, cy + 20, rx * 0.74 - 14, ry * 0.62 - 10, 0, Math.PI * 1.09, Math.PI * 1.91);
@@ -307,12 +309,12 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
   g.save();
   g.translate(cx, cy - ry * 0.21);
   g.scale(1, 0.55);
-  g.fillStyle = rgba(PAL.gold, 0.22);
-  g.font = '700 46px "Cinzel", "Noto Serif SC", serif';
+  g.fillStyle = rgba(PAL.beige, 0.22);
+  g.font = 'italic 700 46px Georgia, "Noto Serif SC", serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillText('ROYAL  NIGHT', 0, 0);
-  g.strokeStyle = rgba(PAL.gold, 0.2);
+  g.fillText('HOLD\u2019EM', 0, 0);
+  g.strokeStyle = rgba(PAL.beige, 0.2);
   g.lineWidth = 2;
   for (const s of [-1, 1]) {
     g.beginPath();
@@ -325,7 +327,7 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
     g.lineTo(s * 196, 8);
     g.lineTo(s * 188, 0);
     g.closePath();
-    g.fillStyle = rgba(PAL.gold, 0.22);
+    g.fillStyle = rgba(PAL.beige, 0.22);
     g.fill();
   }
   g.restore();
@@ -501,9 +503,9 @@ export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
   // gold necklace and earrings
   g.translate(OX, OY);
   g.save();
-  g.shadowColor = '#FFE3A3';
+  g.shadowColor = 'rgba(255,255,255,0.8)';
   g.shadowBlur = 10;
-  g.fillStyle = hex(PAL.goldHi);
+  g.fillStyle = hex(PAL.paper);
   for (let i = 0; i <= 12; i++) {
     const t = i / 12;
     g.beginPath();
@@ -528,14 +530,14 @@ export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
 
 /** Chip colours: face, edge spots. */
 export const CHIP_COLORS: [number, number][] = [
-  [0x16121a, PAL.gold],     // black and gold
-  [PAL.crimson, PAL.ivory], // crimson
-  [PAL.ivory, PAL.crimson], // ivory
-  [0x4a2a7a, PAL.gold],     // violet
+  [0x2b2a27, PAL.beige],     // black and gold
+  [PAL.terracotta, PAL.ivory], // crimson
+  [PAL.ivory, PAL.terracotta], // ivory
+  [0x4a2a7a, PAL.beige],     // violet
 ];
 
 /** A chip seen from above (flying chips, particles). */
-export function paintChip(size = 64, face = 0x16121a, stripe = PAL.gold): HTMLCanvasElement {
+export function paintChip(size = 64, face = 0x2b2a27, stripe = PAL.beige): HTMLCanvasElement {
   const [c, g] = canvas(size, size);
   const r = size / 2;
   g.translate(r, r);
@@ -557,7 +559,7 @@ export function paintChip(size = 64, face = 0x16121a, stripe = PAL.gold): HTMLCa
   return c;
 }
 
-export function paintGlow(size = 128, color = '#FFF4EA'): HTMLCanvasElement {
+export function paintGlow(size = 128, color = '#FAF9F5'): HTMLCanvasElement {
   const [c, g] = canvas(size, size);
   const r = size / 2;
   const gr = g.createRadialGradient(r, r, 0, r, r, r);
@@ -584,15 +586,15 @@ export function paintVignette(w: number, h: number, color = '8,3,8'): HTMLCanvas
 export function paintForeground(w: number, h: number): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const rnd = seeded(5);
-  g.fillStyle = '#060305';
+  g.fillStyle = '#0e0d0c';
   g.beginPath(); g.ellipse(w * 0.13, h * 1.03, w * 0.18, h * 0.21, 0, 0, Math.PI * 2); g.fill();
   for (let i = 0; i < 26; i++) { g.beginPath(); g.arc(w * 0.08 + rnd() * w * 0.11, h * 0.74 + rnd() * h * 0.12, 34 + rnd() * 20, 0, Math.PI * 2); g.fill(); }
   g.beginPath(); g.ellipse(w * 0.88, h * 1.04, w * 0.19, h * 0.22, 0, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.ellipse(w * 0.885, h * 0.77, 130, 150, 0, 0, Math.PI * 2); g.fill();
   g.globalCompositeOperation = 'lighter';
-  g.strokeStyle = rgba(PAL.gold, 0.45);
+  g.strokeStyle = rgba(PAL.beige, 0.45);
   g.lineWidth = 5;
-  g.shadowColor = hex(PAL.gold);
+  g.shadowColor = hex(PAL.beige);
   g.shadowBlur = 25;
   g.beginPath(); g.arc(w * 0.885, h * 0.77, 140, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
   g.beginPath(); g.arc(w * 0.135, h * 0.8, 120, Math.PI * 1.15, Math.PI * 1.85); g.stroke();

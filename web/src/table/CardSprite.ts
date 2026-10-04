@@ -3,13 +3,13 @@ import { ease, tween } from '../tween';
 import { FONT, FONT_NUM } from './layout';
 
 const SUITS: Record<string, { glyph: string; color: number }> = {
-  s: { glyph: '♠', color: 0x17131c },
-  c: { glyph: '♣', color: 0x17131c },
-  h: { glyph: '♥', color: 0xb81d3c },
-  d: { glyph: '♦', color: 0xb81d3c },
+  s: { glyph: '♠', color: 0x2b2a27 },
+  c: { glyph: '♣', color: 0x2b2a27 },
+  h: { glyph: '♥', color: 0xb5442e },
+  d: { glyph: '♦', color: 0xb5442e },
 };
-const GOLD = 0xc9a25a;
-const IVORY = 0xfbf5ea;
+const GOLD = 0xc9bba6;
+const IVORY = 0xf2ece0;
 
 function rankLabel(r: string): string {
   return r === 'T' ? '10' : r;
@@ -66,7 +66,7 @@ export class CardSprite extends Container {
   private drawBack() {
     const { w, h } = this;
     const r = Math.max(5, w * 0.08);
-    const g = new Graphics().roundRect(0, 0, w, h, r).fill(0x5e0c1c).stroke({ width: Math.max(1.5, w * 0.02), color: 0xf3e3c0 });
+    const g = new Graphics().roundRect(0, 0, w, h, r).fill(0x7a3b2a).stroke({ width: Math.max(1.5, w * 0.02), color: 0xe4dbcd });
     const m = w * 0.09;
     g.roundRect(m, m, w - m * 2, h - m * 2, r * 0.6).stroke({ width: Math.max(1, w * 0.014), color: GOLD, alpha: 0.9 });
     // lattice
@@ -81,7 +81,7 @@ export class CardSprite extends Container {
     lattice.mask = clip;
     // medallion
     const med = new Graphics()
-      .circle(w / 2, h / 2, w * 0.2).fill(0x5e0c1c).stroke({ width: Math.max(1, w * 0.02), color: GOLD })
+      .circle(w / 2, h / 2, w * 0.2).fill(0x7a3b2a).stroke({ width: Math.max(1, w * 0.02), color: GOLD })
       .circle(w / 2, h / 2, w * 0.13).stroke({ width: Math.max(0.8, w * 0.01), color: GOLD, alpha: 0.7 });
     const d = w * 0.08;
     med.poly([w / 2, h / 2 - d, w / 2 + d * 0.7, h / 2, w / 2, h / 2 + d, w / 2 - d * 0.7, h / 2]).fill(GOLD);
@@ -96,7 +96,7 @@ export class CardSprite extends Container {
     const r = Math.max(5, w * 0.08);
     this.face.addChild(
       new Graphics()
-        .roundRect(0, 0, w, h, r).fill(IVORY).stroke({ width: Math.max(1.2, w * 0.016), color: 0xd8c7a6 })
+        .roundRect(0, 0, w, h, r).fill(IVORY).stroke({ width: Math.max(1.2, w * 0.016), color: 0xd6ccbc })
         .roundRect(w * 0.035, w * 0.035, w - w * 0.07, h - w * 0.07, r * 0.7).stroke({ width: Math.max(0.6, w * 0.008), color: GOLD, alpha: 0.6 }),
     );
     // corner indices (top-left and, upside down, bottom-right)
@@ -137,7 +137,7 @@ export class CardSprite extends Container {
       // J Q K: a gilded frame, the letter, a crown and the suit
       const fx = w * 0.22, fy = h * 0.17, fw = w * 0.56, fh = h * 0.66;
       const frame = new Graphics()
-        .roundRect(fx, fy, fw, fh, r * 0.5).fill(suit.color === 0x17131c ? 0xebe1f0 : 0xf7e1df)
+        .roundRect(fx, fy, fw, fh, r * 0.5).fill(suit.color === 0x2b2a27 ? 0xe8e4dc : 0xf0e4dc)
         .roundRect(fx, fy, fw, fh, r * 0.5).stroke({ width: Math.max(1, w * 0.018), color: GOLD });
       const crown = new Graphics();
       const cw = fw * 0.5, cx = w / 2 - cw / 2, cy = fy + fh * 0.12, ch = fh * 0.16;
@@ -199,7 +199,7 @@ export class CardSprite extends Container {
     this.back.visible = true;
   }
 
-  highlight(on: boolean, color = 0xffd98a) {
+  highlight(on: boolean, color = 0xe4dbcd) {
     this.outline.clear();
     if (on) this.outline.roundRect(-4, -4, this.w + 8, this.h + 8, Math.max(8, this.w * 0.1)).stroke({ width: Math.max(4, this.w * 0.05), color });
   }

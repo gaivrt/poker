@@ -13,7 +13,7 @@ export class Particles {
   private pool: Sprite[] = [];
   readonly chipTex = CHIP_COLORS.slice(0, 3).map(([face, spot]) => Texture.from(paintChip(64, face, spot)));
   readonly glowTex = Texture.from(paintGlow(128));
-  readonly goldTex = Texture.from(paintGlow(64, '#FFD36B'));
+  readonly goldTex = Texture.from(paintGlow(64, '#F0E6D2'));
   private paperTex: Texture | null = null;
   /** Most particles alive at once (lowered on weaker devices). */
   max = 420;
@@ -128,7 +128,7 @@ export class Particles {
       g.fillRect(0, 0, 18, 10);
       this.paperTex = Texture.from(c);
     }
-    const colors = [0xffe3a3, 0xe8c27a, 0xc9a25a, 0xf6ecd9, 0xb81d3c, 0xffffff];
+    const colors = [0xfaf9f5, 0xe4dbcd, 0xc9bba6, 0xf2ece0, 0xb5442e, 0xffffff];
     for (let i = 0; i < n; i++) {
       this.spawn(this.paperTex, x + (Math.random() - 0.5) * spread, y - Math.random() * 200, {
         vx: (Math.random() - 0.5) * 260, vy: 160 + Math.random() * 260, g: 120, vr: (Math.random() - 0.5) * 10,
@@ -138,7 +138,7 @@ export class Particles {
   }
 
   /** A firework: a ring of glowing sparks that droop and fade. */
-  firework(x: number, y: number, color = 0xffd36b, n = 36) {
+  firework(x: number, y: number, color = 0xe4dbcd, n = 36) {
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.1;
       const v = 320 + Math.random() * 160;

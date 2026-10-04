@@ -4,11 +4,14 @@ export const DESIGN_H = 1080;
 
 export interface Point { x: number; y: number }
 
-export const FONT = '"Noto Sans SC","PingFang SC","Hiragino Sans","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
-export const FONT_DISPLAY = '"Noto Serif SC","Songti SC","STSong","Noto Sans SC",serif';
+/** Small UI text: Inter, with Noto Sans SC for Chinese. */
+export const FONT = '"Inter","Noto Sans SC","PingFang SC","Hiragino Sans","Microsoft YaHei",system-ui,sans-serif';
+/** Names, titles and big words: Georgia with a Song face for Chinese (bold, 28px and up). */
+export const FONT_DISPLAY = 'Georgia,"Noto Serif SC","Songti SC","STSong",SimSun,serif';
 /** Brush calligraphy for hand names and big words (胜负揭晓, 四条, 本局主役...). */
 export const FONT_BRUSH = '"Ma Shan Zheng","ZCOOL QingKe HuangYou","Noto Sans SC","PingFang SC",serif';
-export const FONT_NUM = '"Cinzel","Noto Serif SC","Times New Roman",serif';
+/** Numbers: Georgia's old-style figures read warm and calm. */
+export const FONT_NUM = 'Georgia,"Noto Serif SC",Cambria,serif';
 
 export interface SeatSpot {
   base: Point;     // bottom-centre of the character art (hidden below the table rim)

@@ -15,8 +15,8 @@ function face(g: Graphics, kind: Face, color: number) {
   // Hair, face, blush
   g.circle(0, -6, 56).fill(color);
   g.ellipse(0, 8, 48, 44).fill(SKIN).stroke({ width: 3, color: INK, alpha: 0.6 });
-  g.ellipse(-28, 22, 9, 5).fill({ color: 0xff8fa3, alpha: 0.6 });
-  g.ellipse(28, 22, 9, 5).fill({ color: 0xff8fa3, alpha: 0.6 });
+  g.ellipse(-28, 22, 9, 5).fill({ color: 0xe9a58a, alpha: 0.6 });
+  g.ellipse(28, 22, 9, 5).fill({ color: 0xe9a58a, alpha: 0.6 });
   const dotEyes = (dy = 0, r = 5) => g.circle(-17, 4 + dy, r).fill(INK).circle(17, 4 + dy, r).fill(INK);
   const arcEye = (x: number, up: boolean) => {
     g.moveTo(x - 9, up ? 8 : 2).quadraticCurveTo(x, up ? -4 : 12, x + 9, up ? 8 : 2).stroke({ width: 4, color: INK, cap: 'round' });
@@ -30,7 +30,7 @@ function face(g: Graphics, kind: Face, color: number) {
       arcEye(-17, true);
       g.circle(17, 4, 6).fill(INK);
       g.moveTo(-12, 26).lineTo(12, 26).stroke({ width: 4, color: INK, cap: 'round' });
-      g.ellipse(4, 33, 7, 8).fill(0xe0506a);
+      g.ellipse(4, 33, 7, 8).fill(0xd97757);
       break;
     case Sticker.Question:
       dotEyes();
@@ -57,12 +57,12 @@ function face(g: Graphics, kind: Face, color: number) {
       dotEyes(2);
       g.moveTo(-28, -10).lineTo(-8, -2).moveTo(28, -10).lineTo(8, -2).stroke({ width: 5, color: INK, cap: 'round' });
       g.moveTo(-12, 32).quadraticCurveTo(0, 22, 12, 32).stroke({ width: 4, color: INK, cap: 'round' });
-      g.moveTo(30, -36).lineTo(42, -24).moveTo(42, -36).lineTo(30, -24).stroke({ width: 4, color: 0xe0304a, cap: 'round' });
+      g.moveTo(30, -36).lineTo(42, -24).moveTo(42, -36).lineTo(30, -24).stroke({ width: 4, color: 0xd97757, cap: 'round' });
       break;
     case Sticker.GoodHand:
       arcEye(-17, true);
       arcEye(17, true);
-      g.moveTo(-16, 22).quadraticCurveTo(0, 44, 16, 22).closePath().fill(0xe0506a).stroke({ width: 3, color: INK });
+      g.moveTo(-16, 22).quadraticCurveTo(0, 44, 16, 22).closePath().fill(0xd97757).stroke({ width: 3, color: INK });
       g.star(46, -30, 4, 9, 4).fill(0xffd166).star(-46, -24, 4, 7, 3).fill(0xffd166);
       break;
     case Sticker.Thinking:

@@ -19,7 +19,7 @@ export async function stamp(layer: Container, text: string, x: number, y: number
     text,
     style: {
       fontFamily: o.font ?? FONT_DISPLAY, fontWeight: o.font ? 'normal' : '900', fontSize: o.size ?? 110, fill: o.color ?? 0xffffff,
-      stroke: { color: o.stroke ?? 0x0a0608, width: 14 }, letterSpacing: 4,
+      stroke: { color: o.stroke ?? 0x1a1918, width: 14 }, letterSpacing: 4,
       dropShadow: { color: 0x000000, alpha: 0.5, distance: 6, angle: Math.PI / 2, blur: 4 },
     },
   });

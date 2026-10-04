@@ -5,7 +5,7 @@ import { sfx } from '../audio/sfx';
 import type { Character } from '../characters';
 import type { Particles } from '../fx/particles';
 import { PAL, paintBeam } from '../stage/painter';
-import { FONT } from '../table/layout';
+import { FONT, FONT_DISPLAY } from '../table/layout';
 import { ease, tween, wait } from '../tween';
 
 const LINES = ['今晚，想赢点什么？', '坐下吧。牌桌可不等人。', '看穿我，你就赢了。', '本局主役，非我莫属。', '筹码会说话——你听得见吗？'];
@@ -25,7 +25,7 @@ export class Lobby extends Container {
     // a spotlight on her: a warm cone and a pool of light at her feet
     const beam = new Sprite(Texture.from(paintBeam(1920, 1080, 1380, -60, 1080, 560)));
     beam.blendMode = 'add';
-    const glow = new Graphics().ellipse(1380, 1010, 520, 90).fill({ color: PAL.goldHi, alpha: 0.12 });
+    const glow = new Graphics().ellipse(1380, 1010, 520, 90).fill({ color: PAL.paper, alpha: 0.05 });
     glow.blendMode = 'add';
     this.figure = new Sprite(pose);
     this.figure.anchor.set(0.5, 1);
@@ -46,24 +46,23 @@ export class Lobby extends Container {
     this.figure.scale.set(k, k * (1 + Math.sin(t * 1.6) * 0.01));
     this.figure.rotation = Math.sin(t * 0.8) * 0.01;
     if (performance.now() > this.chipTimer) {
-      // gold dust drifting up through the light
-      this.chipTimer = performance.now() + 700;
-      this.particles.sparkle(1380 + (Math.random() - 0.5) * 500, 600 + Math.random() * 300, 5, 140);
+      // a little dust drifting up through the light
+      this.chipTimer = performance.now() + 1400;
+      this.particles.sparkle(1380 + (Math.random() - 0.5) * 500, 600 + Math.random() * 300, 2, 140);
     }
   }
 
   say(text = LINES[Math.floor(Math.random() * LINES.length)]) {
     sfx.play('chime', 0.4);
     this.bubble.removeChildren().forEach((c) => c.destroy());
-    const t = new Text({ text, style: { fontFamily: FONT, fontSize: 28, fontWeight: '700', fill: PAL.ivory } });
-    const w = t.width + 48, h = t.height + 28;
+    const t = new Text({ text, style: { fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: '700', fill: PAL.paper } });
+    const who = new Text({ text: `— ${this.char.name}`, style: { fontFamily: FONT, fontSize: 14, fill: PAL.muted, letterSpacing: 2 } });
+    const w = Math.max(t.width, who.width) + 52, h = t.height + who.height + 40;
     const bg = new Graphics()
-      .roundRect(5, 7, w, h, 10).fill({ color: 0x000000, alpha: 0.45 })
-      .poly([24, h - 2, 60, h - 2, 10, h + 34]).fill({ color: 0x140c12, alpha: 0.95 })
-      .roundRect(0, 0, w, h, 10).fill({ color: 0x140c12, alpha: 0.95 }).stroke({ width: 2.5, color: this.char.color })
-      .roundRect(4, 4, w - 8, h - 8, 7).stroke({ width: 1, color: PAL.gold, alpha: 0.4 });
-    t.position.set(24, 14);
-    this.bubble.addChild(bg, t);
+      .roundRect(0, 0, w, h, 10).fill({ color: 0x262624, alpha: 0.9 }).stroke({ width: 1, color: PAL.beige, alpha: 0.18 });
+    t.position.set(26, 16);
+    who.position.set(28, 24 + t.height);
+    this.bubble.addChild(bg, t, who);
     this.bubble.position.set(1530, 300);
     this.bubble.rotation = 0;
     this.bubble.scale.set(0.6);

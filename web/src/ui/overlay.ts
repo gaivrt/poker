@@ -351,29 +351,25 @@ export class Overlay {
     this.home.classList.remove('hidden');
     this.home.innerHTML = `
       <div class="topbar">
-        <button class="me" title="改名"><span class="ava">${esc(profile.name.slice(0, 1))}</span>
-          <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分</small></span>
-          <span class="prog"><i style="width:${Math.round(t.progress * 100)}%"></i></span></button>
-        <div class="daily"><b>今日任务</b><span>打完 1 局段位赛</span><span>发现 1 个破绽</span></div>
-        <button class="round gear">设置</button>
+        <button class="me" title="改名"><span class="prog"><i style="width:${Math.round(t.progress * 100)}%"></i></span>
+          <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分</small></span></button>
+        <button class="gear">设置</button>
       </div>
-      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">ROYAL NIGHT · HOLD'EM</div></div>
+      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">HOLD'EM · MIND GAMES</div></div>
       <div class="modes">
-        <button class="poster ranked"><span class="tape"></span>
-          <b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位</small>
-          <span class="tier"><em>${t.name}</em>${t.next ? `距 ${t.next} 还差 ${t.toNext} 分` : '已是最高段位'}</span></button>
-        <div class="poster-row">
-          <button class="poster practice"><span class="tape"></span><b>单人练习</b><small>自选赛制和难度</small></button>
-          <button class="poster friends" disabled><span class="tape"></span><b>好友房</b><small>开发中</small></button>
-        </div>
+        <button class="poster ranked"><span class="n">01</span>
+          <span class="t"><b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位 · ${t.name}${t.next ? `，距 ${t.next} 还差 ${t.toNext} 分` : ''}</small></span>
+          <span class="cta">开始匹配</span></button>
+        <button class="poster practice"><span class="n">02</span><span class="t"><b>单人练习</b><small>自选赛制和难度</small></span></button>
+        <button class="poster friends" disabled><span class="n">03</span><span class="t"><b>好友房</b><small>开发中</small></span></button>
         <div class="rounds">
-          <button data-k="roster"><i>角</i>角色</button>
-          <button data-k="tells"><i>鉴</i>图鉴<sup>${found}/${total}</sup></button>
-          <button data-k="replays"><i>谱</i>牌谱</button>
-          <button data-k="rules"><i>规</i>规则</button>
+          <button data-k="roster">角色</button>
+          <button data-k="tells">破绽图鉴<sup>${found}/${total}</sup></button>
+          <button data-k="replays">牌谱</button>
+          <button data-k="rules">规则</button>
         </div>
       </div>
-      <div class="news"><b>公告</b><span>原型测试中：对手为 AI，角色立绘为占位，联机段位赛正在开发。</span></div>`;
+      <div class="news"><b>公告</b><span>原型测试中，角色立绘为占位</span></div>`;
     const q = <T extends HTMLElement>(sel: string) => this.home.querySelector(sel) as T;
     q<HTMLButtonElement>('.gear').onclick = () => this.openSettings();
     q<HTMLButtonElement>('.me').onclick = () => this.renameDialog(profile.name, (n) => {
@@ -849,7 +845,7 @@ export class Overlay {
           sfx.play('cheer', 0.9);
           this.modal.querySelector('.fin')!.classList.add('crowned');
           const box = q<HTMLElement>('.confetti');
-          const colors = ['#ffe3a3', '#e8c27a', '#c9a25a', '#f6ecd9', '#b81d3c', '#fff'];
+          const colors = ['#faf9f5', '#e4dbcd', '#d97757', '#bdd2cb', '#6a9ccd'];
           box.innerHTML = Array.from({ length: 70 }, (_, k) =>
             `<i style="left:${Math.random() * 100}%;background:${colors[k % colors.length]};animation-delay:${Math.random() * 0.8}s;animation-duration:${2.2 + Math.random() * 1.6}s;transform:rotate(${Math.random() * 360}deg)"></i>`).join('');
         }

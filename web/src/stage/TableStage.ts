@@ -76,10 +76,9 @@ export class TableStage extends Container {
     });
 
     const potBg = new Graphics()
-      .roundRect(-120, -24, 240, 48, 6).fill({ color: 0x0a0608, alpha: 0.82 })
-      .roundRect(-120, -24, 240, 48, 6).stroke({ width: 2, color: PAL.gold })
-      .roundRect(-115, -19, 230, 38, 4).stroke({ width: 1, color: PAL.gold, alpha: 0.35 });
-    this.potText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 24, fill: PAL.goldHi, letterSpacing: 1 } });
+      .roundRect(-120, -24, 240, 48, 6).fill({ color: 0x1a1918, alpha: 0.82 })
+      .roundRect(-120, -24, 240, 48, 6).stroke({ width: 1.5, color: PAL.beige, alpha: 0.35 });
+    this.potText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 24, fill: PAL.paper, letterSpacing: 1 } });
     this.potText.anchor.set(0.5);
     this.potBox.addChild(potBg, this.potText);
     this.potBox.position.set(POT_POS.x, POT_POS.y);
@@ -87,14 +86,14 @@ export class TableStage extends Container {
 
     const btn = new Graphics()
       .ellipse(3, 5, 23, 15).fill({ color: 0x000000, alpha: 0.4 })
-      .circle(0, 0, 22).fill(PAL.ivory).stroke({ width: 3, color: PAL.gold })
-      .circle(0, 0, 16).stroke({ width: 1, color: PAL.goldLo, alpha: 0.7 });
-    const d = new Text({ text: 'D', style: { fontFamily: FONT_NUM, fontWeight: '900', fontSize: 20, fill: 0x17131c } });
+      .circle(0, 0, 22).fill(PAL.ivory).stroke({ width: 3, color: PAL.beige })
+      .circle(0, 0, 16).stroke({ width: 1, color: PAL.muted, alpha: 0.7 });
+    const d = new Text({ text: 'D', style: { fontFamily: FONT_NUM, fontWeight: '900', fontSize: 20, fill: 0x2b2a27 } });
     d.anchor.set(0.5);
     this.dealer.addChild(btn, d);
     this.dealer.visible = false;
 
-    this.squeezeHint = new Text({ text: '按住手牌眯牌', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 24, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 6 } } });
+    this.squeezeHint = new Text({ text: '按住手牌眯牌', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 24, fill: PAL.paper, stroke: { color: 0x1a1918, width: 6 } } });
     this.squeezeHint.anchor.set(0.5);
     this.squeezeHint.position.set(SPOTS[0].cards.x + 100, SPOTS[0].cards.y - 170);
     this.squeezeHint.visible = false;
@@ -273,7 +272,7 @@ export class TableStage extends Container {
       c.highlight(on);
       c.alpha = best && !on ? 0.45 : 1;
       void tween(c, { y: BOARD_Y - (on ? 16 : 0) }, 260, ease.outBack);
-      if (on) void wait(i * 60).then(() => c.shine(0xffd36b, 420));
+      if (on) void wait(i * 60).then(() => c.shine(0xe4dbcd, 420));
     });
   }
 
@@ -298,7 +297,7 @@ export class TableStage extends Container {
     c.set(code);
     c.y = BOARD_Y;
     sfx.play('flip');
-    void c.shine(0xffd36b, 420);
+    void c.shine(0xe4dbcd, 420);
   }
 
   /** Face-up card sprites (board and hands) showing any of `codes`. */
@@ -416,7 +415,7 @@ export class TableStage extends Container {
     t.anchor.set(0.5);
     const lines: Text[] = [t];
     if (sub) {
-      const s = new Text({ text: sub, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 28, fill: PAL.goldHi } });
+      const s = new Text({ text: sub, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 28, fill: PAL.paper } });
       s.anchor.set(0.5);
       s.y = 46;
       lines.push(s);
@@ -425,9 +424,8 @@ export class TableStage extends Container {
     const h = sub ? 118 : 74;
     const bg = new Graphics()
       .roundRect(-w / 2 + 4, -38 + 8, w, h, 8).fill({ color: 0x000000, alpha: 0.45 })
-      .roundRect(-w / 2, -38, w, h, 8).fill({ color: 0x0e0a0d, alpha: 0.92 })
-      .roundRect(-w / 2, -38, w, h, 8).stroke({ width: 2.5, color: PAL.gold })
-      .roundRect(-w / 2 + 6, -32, w - 12, h - 12, 5).stroke({ width: 1, color: PAL.gold, alpha: 0.4 });
+      .roundRect(-w / 2, -38, w, h, 8).fill({ color: 0x262624, alpha: 0.92 })
+      .roundRect(-w / 2, -38, w, h, 8).stroke({ width: 1.5, color: PAL.beige, alpha: 0.35 });
     this.banner.addChild(bg, ...lines);
     this.banner.position.set(960, 470);
     this.banner.rotation = 0;

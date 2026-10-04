@@ -27,8 +27,8 @@ import { Overlay, PLACE_POINTS } from './ui/overlay';
 const BRUSH_TEXT = '胜负揭晓高牌一对两对三条顺子同花葫芦四条同花顺皇家冤家牌本局主役混战到带大和AKQJT98765432';
 await Promise.race([
   Promise.all([
-    ...['700 40px "Cinzel"', '900 40px "Noto Serif SC"', '700 40px "Noto Sans SC"'].map((f) => document.fonts.load(f)),
-    document.fonts.load('900 40px "Noto Serif SC"', '牌桌心理战段位赛单人练习好友房弃牌跟注加注过牌下注全下底池胜负揭晓'),
+    ...['500 40px "Inter"', '700 40px "Noto Serif SC"', '500 40px "Noto Sans SC"'].map((f) => document.fonts.load(f)),
+    document.fonts.load('700 40px "Noto Serif SC"', '牌桌心理战段位赛单人练习好友房弃牌跟注加注过牌下注全下底池胜负揭晓'),
     document.fonts.load('40px "Ma Shan Zheng"', BRUSH_TEXT),
   ]),
   new Promise((r) => setTimeout(r, 2500)),
@@ -36,7 +36,7 @@ await Promise.race([
 
 const app = new Application();
 await app.init({
-  background: 0x300b0b,
+  background: 0x1f1e1d,
   resizeTo: window,
   antialias: true,
   resolution: Math.min(window.devicePixelRatio || 1, 2),
