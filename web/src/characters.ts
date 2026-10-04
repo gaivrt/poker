@@ -14,8 +14,6 @@ export interface Character {
   name: string;
   style: string;
   color: number;
-  /** The court card this character is drawn as (docs/10): rank then suit, e.g. "Q♠". */
-  court: string;
   talk: TalkLines;
   lines: {
     raise: string[];
@@ -30,7 +28,6 @@ export const HERO: Character = {
   name: '你',
   style: '玩家',
   color: 0x8f6bd6,
-  court: 'A♠',
   talk: {
     [LineKind.Taunt]: ['你敢跟吗？', '不服就跟。'],
     [LineKind.Weak]: ['唉，这手牌……', '今天手气真差。'],
@@ -44,7 +41,7 @@ export const HERO: Character = {
 
 export const CAST: Character[] = [
   {
-    name: '凛', style: '紧凶型', color: 0xd94f5c, court: 'Q♠',
+    name: '凛', style: '紧凶型', color: 0xd94f5c,
     talk: {
       [LineKind.Taunt]: ['跟得起就跟。', '犹豫什么？'],
       [LineKind.Weak]: ['……这手一般。', '不太妙。'],
@@ -62,7 +59,7 @@ export const CAST: Character[] = [
     },
   },
   {
-    name: '团子', style: '跟注站', color: 0xf2b84b, court: 'Q♥',
+    name: '团子', style: '跟注站', color: 0xf2b84b,
     talk: {
       [LineKind.Taunt]: ['来呀来呀～', '你、你敢跟吗！'],
       [LineKind.Weak]: ['呜……牌好差……', '这把不太行……'],
@@ -80,7 +77,7 @@ export const CAST: Character[] = [
     },
   },
   {
-    name: '焰', style: '疯狂型', color: 0xff7a2f, court: 'J♥',
+    name: '焰', style: '疯狂型', color: 0xff7a2f,
     talk: {
       [LineKind.Taunt]: ['有种就跟！', '怕了吗？'],
       [LineKind.Weak]: ['切，烂牌。', '今天手气真差！'],
@@ -98,7 +95,7 @@ export const CAST: Character[] = [
     },
   },
   {
-    name: '静', style: '岩石型', color: 0x7fa7c9, court: 'Q♣',
+    name: '静', style: '岩石型', color: 0x7fa7c9,
     talk: {
       [LineKind.Taunt]: ['……请。', '……跟吧。'],
       [LineKind.Weak]: ['……唔。', '……不太好。'],
@@ -116,7 +113,7 @@ export const CAST: Character[] = [
     },
   },
   {
-    name: '葵', style: '平衡型', color: 0x5fbf8f, court: 'Q♦',
+    name: '葵', style: '平衡型', color: 0x5fbf8f,
     talk: {
       [LineKind.Taunt]: ['要不要试试看？', '跟上来吧～'],
       [LineKind.Weak]: ['这手牌有点为难呢。', '嗯……不太好。'],
@@ -134,7 +131,7 @@ export const CAST: Character[] = [
     },
   },
   {
-    name: '狐', style: '诈唬型', color: 0xa77be0, court: 'J♦',
+    name: '狐', style: '诈唬型', color: 0xa77be0,
     talk: {
       [LineKind.Taunt]: ['呵呵，你敢吗？', '跟呀，我等你哦～'],
       [LineKind.Weak]: ['哎呀，牌好烂呢～', '这把真的不行……'],

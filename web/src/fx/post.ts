@@ -23,9 +23,9 @@ export class Post {
   ) {
     this.vignette = new Sprite(Texture.from(paintVignette(1920, 1080)));
     this.vignette.alpha = 0.85;
-    // colour grade: a little more contrast (deep inks, clean ivories)
+    // colour grade: a little more contrast and richness (deep blacks, glowing golds)
     this.grade.contrast(0.12, false);
-    this.grade.saturate(0.04, true);
+    this.grade.saturate(0.08, true);
     this.flashG.alpha = 0;
     this.red = new Sprite(Texture.from(redEdge(1920, 1080)));
     this.red.alpha = 0;

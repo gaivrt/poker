@@ -2,9 +2,9 @@
 // Every piece here is replaced automatically when a matching PNG is dropped into
 // web/public/art/ (see assets.ts and docs/08 §6).
 //
-// The look follows docs/10 ("牌面", the card face): everything grows out of a deck of
-// cards. Ink-black room, a table that is a cobalt card back, ivory card faces, and every
-// character is a court card. Until the illustrations arrive, players are silhouettes.
+// The look follows docs/10 ("gilded night"): a dark, luxurious casino lounge, warm gold
+// chandeliers, one spotlight on an emerald table, black leather and gold trim.
+// Until the character art arrives, the players are silhouettes with rim light.
 
 export type Pose = 'idle' | 'smug' | 'nervous' | 'angry' | 'shock' | 'cry' | 'win';
 export type HairStyle = 'bob' | 'long' | 'twin' | 'short' | 'fox';
@@ -14,18 +14,19 @@ export interface Look {
   hair: HairStyle;
 }
 
-/** The palette (docs/10 §2): ink, card-back cobalt, card-face ivory, and card red. */
+/** The palette (docs/10 §2). */
 export const PAL = {
-  ink: 0x121117,
-  inkHi: 0x1e1d2a,
-  line: 0x3a3946,
-  grey: 0x8c8a99,
-  cobalt: 0x2b3fd6,
-  cobaltHi: 0x7c8cff,
-  cobaltTint: 0xdce0fa,
-  ivory: 0xf2ecdf,
-  red: 0xc8202f,
-  redHi: 0xff6b76,
+  night: 0x0d080c,
+  plum: 0x1c0e18,
+  wine: 0x3a0f1c,
+  crimson: 0xb81d3c,
+  gold: 0xe8c27a,
+  goldHi: 0xffe3a3,
+  goldLo: 0x8a6a2f,
+  ivory: 0xf6ecd9,
+  felt: 0x17574b,
+  feltHi: 0x2f8f7a,
+  leather: 0x1a1112,
 };
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -54,31 +55,140 @@ function seeded(seed: number) {
 // Room
 // ---------------------------------------------------------------------------
 
-/** The room: ink black with a cool glow where the eye rests and a faint card-back
- *  lattice, so the whole screen feels like the inside of a deck. */
+/** A dark casino lounge: wine walls with gilded art-deco pilasters, velvet curtains,
+ *  chandeliers glowing above, warm bokeh far away. `vp` is where the eye rests. */
 export function paintRoom(w: number, h: number, vp: { x: number; y: number }, seed = 7): HTMLCanvasElement {
-  void seed;
   const [c, g] = canvas(w, h);
-  g.fillStyle = hex(PAL.ink);
+  const rnd = seeded(seed);
+  const bg = g.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#120810');
+  bg.addColorStop(0.35, '#2a0d1a');
+  bg.addColorStop(0.62, '#200a14');
+  bg.addColorStop(1, '#09050a');
+  g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
-  const glow = g.createRadialGradient(vp.x, vp.y, 0, vp.x, vp.y, w * 0.6);
-  glow.addColorStop(0, '#22244a');
-  glow.addColorStop(0.55, '#17162a');
-  glow.addColorStop(1, hex(PAL.ink));
+
+  // warm glow behind the focus
+  const glow = g.createRadialGradient(vp.x, vp.y, 20, vp.x, vp.y, w * 0.55);
+  glow.addColorStop(0, 'rgba(255,190,120,0.30)');
+  glow.addColorStop(0.4, 'rgba(180,70,60,0.14)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = glow;
   g.fillRect(0, 0, w, h);
-  // lattice
-  g.strokeStyle = rgba(PAL.ivory, 0.025);
-  g.lineWidth = 1;
-  for (let x = -h; x < w + h; x += 44) {
-    g.beginPath(); g.moveTo(x, 0); g.lineTo(x + h, h); g.stroke();
-    g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.stroke();
+
+  // Back wall: gilded pilasters and arches, slightly out of focus.
+  g.filter = 'blur(3px)';
+  const wallTop = h * 0.12, wallBot = h * 0.62;
+  for (let i = 0; i < 9; i++) {
+    const x = (i + 0.5) * (w / 9);
+    const gr = g.createLinearGradient(x - 18, 0, x + 18, 0);
+    gr.addColorStop(0, rgba(PAL.goldLo, 0));
+    gr.addColorStop(0.5, rgba(PAL.gold, 0.28));
+    gr.addColorStop(1, rgba(PAL.goldLo, 0));
+    g.fillStyle = gr;
+    g.fillRect(x - 18, wallTop, 36, wallBot - wallTop);
+    // fluting
+    g.strokeStyle = rgba(PAL.goldHi, 0.12);
+    g.lineWidth = 2;
+    for (const dx of [-8, 0, 8]) {
+      g.beginPath();
+      g.moveTo(x + dx, wallTop + 20);
+      g.lineTo(x + dx, wallBot - 20);
+      g.stroke();
+    }
+    // arch between pilasters
+    if (i < 8) {
+      const ax = x + w / 18;
+      g.strokeStyle = rgba(PAL.gold, 0.16);
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(ax, wallTop + 120, w / 18 - 26, Math.PI, 0);
+      g.stroke();
+      // sunburst inside the arch
+      g.strokeStyle = rgba(PAL.gold, 0.07);
+      g.lineWidth = 2;
+      for (let k = 1; k < 8; k++) {
+        const a = Math.PI + (k / 8) * Math.PI;
+        g.beginPath();
+        g.moveTo(ax, wallTop + 120);
+        g.lineTo(ax + Math.cos(a) * (w / 18 - 30), wallTop + 120 + Math.sin(a) * (w / 18 - 30));
+        g.stroke();
+      }
+    }
   }
-  const v = g.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, w * 0.62);
-  v.addColorStop(0, 'rgba(0,0,0,0)');
-  v.addColorStop(1, 'rgba(0,0,0,0.55)');
-  g.fillStyle = v;
-  g.fillRect(0, 0, w, h);
+  // a gold cornice line
+  g.fillStyle = rgba(PAL.gold, 0.2);
+  g.fillRect(0, wallTop - 6, w, 4);
+  g.filter = 'none';
+
+  // Far away: tables, people and slot lights, all bokeh.
+  g.filter = 'blur(14px)';
+  for (let i = 0; i < 12; i++) {
+    g.globalAlpha = 0.5;
+    g.fillStyle = i % 2 ? '#3a1222' : '#170910';
+    g.beginPath();
+    g.ellipse(rnd() * w, h * 0.6 + rnd() * h * 0.08, 90 + rnd() * 80, 40 + rnd() * 30, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  const bokeh = ['#FFD9A0', '#FFB870', '#E8C27A', '#FF8A6A', '#C24A6A', '#FFF0D0'];
+  for (let i = 0; i < 70; i++) {
+    g.globalAlpha = 0.18 + rnd() * 0.4;
+    g.fillStyle = bokeh[Math.floor(rnd() * bokeh.length)];
+    g.beginPath();
+    g.arc(rnd() * w, h * 0.3 + rnd() * h * 0.32, 6 + rnd() * 30, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  g.filter = 'none';
+
+  // Chandeliers: a warm halo, a crown of crystals, sparkle.
+  const chands = [0.18, 0.5, 0.82].map((t) => ({ x: w * t + (rnd() - 0.5) * 60, y: h * (0.06 + rnd() * 0.05) }));
+  for (const ch of chands) {
+    const halo = g.createRadialGradient(ch.x, ch.y, 4, ch.x, ch.y, 260);
+    halo.addColorStop(0, 'rgba(255,236,190,0.75)');
+    halo.addColorStop(0.25, 'rgba(255,200,120,0.25)');
+    halo.addColorStop(1, 'rgba(255,170,90,0)');
+    g.fillStyle = halo;
+    g.fillRect(ch.x - 280, ch.y - 280, 560, 560);
+    g.filter = 'blur(1.5px)';
+    for (let k = 0; k < 40; k++) {
+      const a = rnd() * Math.PI;
+      const r = 20 + rnd() * 90;
+      g.fillStyle = rnd() < 0.3 ? '#FFFFFF' : '#FFE3A3';
+      g.globalAlpha = 0.5 + rnd() * 0.5;
+      g.beginPath();
+      g.arc(ch.x + Math.cos(a) * r, ch.y + Math.sin(a) * r * 0.55, 1.5 + rnd() * 2.5, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    g.filter = 'none';
+  }
+
+  // Velvet curtains at both edges.
+  for (const side of [0, 1]) {
+    const x0 = side ? w - 210 : 0;
+    for (let f = 0; f < 6; f++) {
+      const fx = x0 + f * 35;
+      const gr = g.createLinearGradient(fx, 0, fx + 35, 0);
+      gr.addColorStop(0, '#2a0510');
+      gr.addColorStop(0.5, f % 2 ? '#6e0f22' : '#58091b');
+      gr.addColorStop(1, '#22040c');
+      g.fillStyle = gr;
+      g.fillRect(fx, 0, 36, h);
+    }
+    const fade = g.createLinearGradient(side ? w - 210 : 210, 0, side ? w - 320 : 320, 0);
+    fade.addColorStop(0, 'rgba(10,3,6,0.55)');
+    fade.addColorStop(1, 'rgba(10,3,6,0)');
+    g.fillStyle = fade;
+    g.fillRect(side ? w - 320 : 210, 0, 110, h);
+  }
+
+  // haze and a darker floor
+  const floor = g.createLinearGradient(0, h * 0.55, 0, h);
+  floor.addColorStop(0, 'rgba(8,3,6,0)');
+  floor.addColorStop(1, 'rgba(8,3,6,0.85)');
+  g.fillStyle = floor;
+  g.fillRect(0, h * 0.55, w, h * 0.45);
   return c;
 }
 
@@ -106,53 +216,119 @@ export function paintBeam(w: number, h: number, x: number, top: number, bottom: 
 // Table
 // ---------------------------------------------------------------------------
 
-export const TABLE = { x: 250, y: 360, w: 1420, h: 580, r: 80 };
+export const TABLE = { cx: 960, cy: 1010, rx: 1180, ry: 470 };
 
-/** Diagonal lattice of a card back, clipped to whatever path is current. */
-function lattice(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, step: number, alpha: number) {
-  g.strokeStyle = rgba(PAL.ivory, alpha);
-  g.lineWidth = 1;
-  for (let i = -h; i < w + h; i += step) {
-    g.beginPath(); g.moveTo(x + i, y); g.lineTo(x + i + h, y + h); g.stroke();
-    g.beginPath(); g.moveTo(x + i, y + h); g.lineTo(x + i + h, y); g.stroke();
-  }
-}
-
-/** The table is a giant card back: an ivory border, cobalt lattice, an inner frame line. */
+/** The table seen from the player's seat: black leather rail with a gold inlay,
+ *  emerald felt lit by a spotlight over the board, a gilded betting line. */
 export function paintTable(w: number, h: number): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
-  const { x, y, w: tw, h: th, r } = TABLE;
-  const rr = (dx: number, rad: number) => {
+  const { cx, cy, rx, ry } = TABLE;
+  const ell = (dx: number, dy: number, a0 = 0, a1 = Math.PI * 2, oy = 0) => {
     g.beginPath();
-    g.roundRect(x + dx, y + dx, tw - dx * 2, th - dx * 2, rad);
+    g.ellipse(cx, cy + oy, rx - dx, ry - dy, 0, a0, a1);
   };
-  // shadow
+  // shadow on the floor
   g.fillStyle = 'rgba(0,0,0,0.6)';
-  g.filter = 'blur(30px)';
-  g.beginPath(); g.roundRect(x - 10, y + 30, tw + 20, th + 20, r); g.fill();
+  g.filter = 'blur(24px)';
+  ell(-40, -40, 0, Math.PI * 2, -10);
+  g.fill();
   g.filter = 'none';
-  // ivory border
-  g.fillStyle = hex(PAL.ivory);
-  rr(0, r);
+
+  // leather rail
+  const rim = g.createLinearGradient(0, cy - ry, 0, cy - ry + 110);
+  rim.addColorStop(0, '#4a2f2a');
+  rim.addColorStop(0.18, '#2a1a18');
+  rim.addColorStop(1, '#0c0707');
+  g.fillStyle = rim;
+  ell(0, 0);
   g.fill();
-  // cobalt with a soft light in the middle
-  const felt = g.createRadialGradient(x + tw / 2, y + th * 0.45, 40, x + tw / 2, y + th / 2, tw * 0.62);
-  felt.addColorStop(0, '#3a50ee');
-  felt.addColorStop(0.6, hex(PAL.cobalt));
-  felt.addColorStop(1, '#1f2fa8');
-  g.fillStyle = felt;
-  rr(16, r - 14);
-  g.fill();
-  g.save();
-  rr(16, r - 14);
-  g.clip();
-  lattice(g, x, y, tw, th, 22, 0.1);
-  g.restore();
-  // inner frame line
-  g.strokeStyle = rgba(PAL.ivory, 0.55);
-  g.lineWidth = 2;
-  rr(46, r - 36);
+  // stitching and specular along the rail
+  g.strokeStyle = 'rgba(255,235,210,0.28)';
+  g.lineWidth = 3;
+  ell(10, 8, Math.PI * 1.05, Math.PI * 1.95);
   g.stroke();
+  g.setLineDash([7, 9]);
+  g.strokeStyle = rgba(PAL.gold, 0.25);
+  g.lineWidth = 1.5;
+  ell(26, 22, Math.PI * 1.03, Math.PI * 1.97);
+  g.stroke();
+  g.setLineDash([]);
+
+  // gold inlay between rail and felt
+  g.strokeStyle = rgba(PAL.gold, 0.95);
+  g.lineWidth = 5;
+  g.shadowColor = rgba(PAL.goldHi, 0.8);
+  g.shadowBlur = 14;
+  ell(40, 47, 0, Math.PI * 2, 6);
+  g.stroke();
+  g.shadowBlur = 0;
+
+  // felt with the spotlight pool over the board
+  const felt = g.createRadialGradient(cx, cy - 250, 30, cx, cy - 120, rx * 0.95);
+  felt.addColorStop(0, hex(0x3aa38a));
+  felt.addColorStop(0.22, hex(PAL.feltHi));
+  felt.addColorStop(0.55, hex(PAL.felt));
+  felt.addColorStop(1, '#051c17');
+  g.fillStyle = felt;
+  ell(45, 52, 0, Math.PI * 2, 6);
+  g.fill();
+
+  // felt fibre
+  const rnd = seeded(11);
+  g.save();
+  ell(45, 52, 0, Math.PI * 2, 6);
+  g.clip();
+  for (let i = 0; i < 14000; i++) {
+    g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,20,15,0.08)';
+    g.fillRect(rnd() * w, cy - ry + rnd() * ry * 2, 2, 1.5);
+  }
+  // the rail's shadow falling on the felt edge
+  g.strokeStyle = 'rgba(0,0,0,0.45)';
+  g.lineWidth = 40;
+  g.filter = 'blur(14px)';
+  ell(45, 52, 0, Math.PI * 2, 6);
+  g.stroke();
+  g.filter = 'none';
+  g.restore();
+
+  // gilded betting line, double
+  g.strokeStyle = rgba(PAL.gold, 0.55);
+  g.lineWidth = 2.5;
+  g.beginPath();
+  g.ellipse(cx, cy + 20, rx * 0.74, ry * 0.62, 0, Math.PI * 1.08, Math.PI * 1.92);
+  g.stroke();
+  g.strokeStyle = rgba(PAL.gold, 0.25);
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.ellipse(cx, cy + 20, rx * 0.74 - 14, ry * 0.62 - 10, 0, Math.PI * 1.09, Math.PI * 1.91);
+  g.stroke();
+
+  // the house crest, printed in gold leaf
+  g.save();
+  g.translate(cx, cy - ry * 0.21);
+  g.scale(1, 0.55);
+  g.fillStyle = rgba(PAL.gold, 0.22);
+  g.font = '700 46px "Cinzel", "Noto Serif SC", serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('ROYAL  NIGHT', 0, 0);
+  g.strokeStyle = rgba(PAL.gold, 0.2);
+  g.lineWidth = 2;
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.moveTo(s * 210, 0);
+    g.lineTo(s * 330, 0);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(s * 196, -8);
+    g.lineTo(s * 204, 0);
+    g.lineTo(s * 196, 8);
+    g.lineTo(s * 188, 0);
+    g.closePath();
+    g.fillStyle = rgba(PAL.gold, 0.22);
+    g.fill();
+  }
+  g.restore();
   return c;
 }
 
@@ -250,7 +426,7 @@ function eyes(g: CanvasRenderingContext2D, pose: Pose, color: number) {
 }
 
 /** A half-body placeholder (600×800, bottom = waist): a silhouette against the light,
- *  rim-lit in the character's colour, pearls at the throat, eyes catching the light. */
+ *  rim-lit in the character's colour, gold at the throat, eyes catching the light. */
 export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
   const W = 600, H = 800, OX = W / 2, OY = 290;
   const shape = new Path2D();
@@ -322,12 +498,12 @@ export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
   g.fillRect(0, H - 160, W, 160);
   g.globalCompositeOperation = 'source-over';
 
-  // pearl necklace and earrings
+  // gold necklace and earrings
   g.translate(OX, OY);
   g.save();
-  g.shadowColor = 'rgba(255,255,255,0.8)';
+  g.shadowColor = '#FFE3A3';
   g.shadowBlur = 10;
-  g.fillStyle = hex(PAL.ivory);
+  g.fillStyle = hex(PAL.goldHi);
   for (let i = 0; i <= 12; i++) {
     const t = i / 12;
     g.beginPath();
@@ -352,14 +528,14 @@ export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
 
 /** Chip colours: face, edge spots. */
 export const CHIP_COLORS: [number, number][] = [
-  [PAL.ivory, PAL.cobalt], // ivory, cobalt edge
-  [PAL.ivory, PAL.red],    // ivory, red edge
-  [PAL.ink, PAL.ivory],    // ink
-  [PAL.cobalt, PAL.ivory], // cobalt
+  [0x16121a, PAL.gold],     // black and gold
+  [PAL.crimson, PAL.ivory], // crimson
+  [PAL.ivory, PAL.crimson], // ivory
+  [0x4a2a7a, PAL.gold],     // violet
 ];
 
 /** A chip seen from above (flying chips, particles). */
-export function paintChip(size = 64, face: number = PAL.ivory, stripe: number = PAL.cobalt): HTMLCanvasElement {
+export function paintChip(size = 64, face = 0x16121a, stripe = PAL.gold): HTMLCanvasElement {
   const [c, g] = canvas(size, size);
   const r = size / 2;
   g.translate(r, r);
@@ -393,7 +569,7 @@ export function paintGlow(size = 128, color = '#FFF4EA'): HTMLCanvasElement {
 }
 
 /** Darkened edges. */
-export function paintVignette(w: number, h: number, color = '10,9,16'): HTMLCanvasElement {
+export function paintVignette(w: number, h: number, color = '8,3,8'): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const v = g.createRadialGradient(w / 2, h * 0.5, h * 0.32, w / 2, h / 2, w * 0.6);
   v.addColorStop(0, `rgba(${color},0)`);
@@ -414,9 +590,9 @@ export function paintForeground(w: number, h: number): HTMLCanvasElement {
   g.beginPath(); g.ellipse(w * 0.88, h * 1.04, w * 0.19, h * 0.22, 0, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.ellipse(w * 0.885, h * 0.77, 130, 150, 0, 0, Math.PI * 2); g.fill();
   g.globalCompositeOperation = 'lighter';
-  g.strokeStyle = rgba(PAL.cobaltHi, 0.45);
+  g.strokeStyle = rgba(PAL.gold, 0.45);
   g.lineWidth = 5;
-  g.shadowColor = hex(PAL.cobaltHi);
+  g.shadowColor = hex(PAL.gold);
   g.shadowBlur = 25;
   g.beginPath(); g.arc(w * 0.885, h * 0.77, 140, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
   g.beginPath(); g.arc(w * 0.135, h * 0.8, 120, Math.PI * 1.15, Math.PI * 1.85); g.stroke();

@@ -4,14 +4,13 @@
 // Every moment can be skipped (tap the table or press Space: the rest plays
 // instantly), and the second time a kind of moment plays its holds are shorter.
 // Moments are only triggered by public events, so they never give anything away.
-import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { music } from '../audio/music';
 import { sfx } from '../audio/sfx';
 import type { TableStage } from '../stage/TableStage';
-import { CourtCard, cardBack } from '../stage/court';
-import { PAL, type Pose } from '../stage/painter';
+import { PAL } from '../stage/painter';
 import { CardSprite } from '../table/CardSprite';
-import { BOARD_X, BOARD_Y, FONT, FONT_DISPLAY, FONT_NUM, POT_POS, type Point, fmt } from '../table/layout';
+import { BOARD_X, BOARD_Y, FONT, FONT_BRUSH, FONT_NUM, POT_POS, type Point, fmt } from '../table/layout';
 import { animate, ease, timing, tween, wait } from '../tween';
 import type { Camera } from './camera';
 import { stamp } from './kinetic';
@@ -115,7 +114,7 @@ export class Moments {
     return this.d.stage.toLocal(this.d.screen.toGlobal(p));
   }
 
-  private shade(alpha: number, color = 0x0a0910) {
+  private shade(alpha: number, color = 0x0a0408) {
     const g = new Graphics().rect(-40, -40, 2000, 1160).fill(color);
     g.alpha = 0;
     void tween(g, { alpha }, 160);
@@ -140,57 +139,27 @@ export class Moments {
     return c;
   }
 
-  /** The full-screen card back the big moments play on: cobalt lattice inside ivory rules. */
-  private backdrop(): Container {
+  /** A dark lacquer panel washed with the character's colour and edged in gold. */
+  private luxe(poly: number[], color: number, edge = true) {
+    const g = new Graphics().poly(poly).fill(0x12070c).poly(poly).fill({ color, alpha: 0.34 });
+    // a darker lower half gives the wash some depth
+    const ys = poly.filter((_, i) => i % 2), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const mask = new Graphics().poly(poly).fill(0xffffff);
+    const depth = new Graphics();
+    for (let i = 0; i < 8; i++) depth.rect(-200, y0 + ((y1 - y0) * (i + 4)) / 12, 2400, (y1 - y0) / 12 + 1).fill({ color: 0x000000, alpha: 0.05 * (i + 1) });
+    depth.mask = mask;
     const c = new Container();
-    const g = new Graphics().rect(-40, -40, 2000, 1160).fill(PAL.cobalt);
-    const lattice = new Graphics();
-    for (let x = -1160; x < 2000; x += 26) {
-      lattice.moveTo(x, -40).lineTo(x + 1160, 1120);
-      lattice.moveTo(x, 1120).lineTo(x + 1160, -40);
-    }
-    lattice.stroke({ width: 1, color: PAL.ivory, alpha: 0.12 });
-    const frame = new Graphics()
-      .roundRect(36, 36, 1848, 1008, 36).stroke({ width: 3, color: PAL.ivory, alpha: 0.7 })
-      .roundRect(50, 50, 1820, 980, 26).stroke({ width: 1, color: PAL.ivory, alpha: 0.45 });
-    c.addChild(g, lattice, frame);
+    c.addChild(g, depth, mask);
+    if (edge) c.addChild(new Graphics().poly(poly).stroke({ width: 4, color: PAL.gold, alpha: 0.9 }));
     return c;
   }
 
-  /** A court card of this seat's character, with a soft shadow, centred. */
-  private courtOf(seat: number, w: number, pose: Pose = 'angry', mirrored = true): Container {
-    const s = this.d.stage.seats[seat];
-    const h = w * 1.4;
-    const c = new Container();
-    const shadow = new Graphics().roundRect(-w / 2 + 16, -h / 2 + 34, w, h, w * 0.075).fill({ color: 0x000000, alpha: 0.4 });
-    c.addChild(shadow, new CourtCard({ w, h, court: s.char.court, texture: s.poseTexture(pose), mirrored }));
-    return c;
-  }
-
-  /** A poker chip with a word on it (VS, 混战). */
-  private chip(r: number, word: string, size: number): Container {
-    const c = new Container();
-    const g = new Graphics().circle(6, 14, r).fill({ color: 0x000000, alpha: 0.4 }).circle(0, 0, r).fill(PAL.ivory);
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      g.poly([
-        Math.cos(a - 0.12) * r, Math.sin(a - 0.12) * r, Math.cos(a + 0.12) * r, Math.sin(a + 0.12) * r,
-        Math.cos(a + 0.14) * r * 0.8, Math.sin(a + 0.14) * r * 0.8, Math.cos(a - 0.14) * r * 0.8, Math.sin(a - 0.14) * r * 0.8,
-      ]).fill(PAL.red);
-    }
-    g.circle(0, 0, r * 0.68).fill(PAL.ink).stroke({ width: 3, color: PAL.ivory });
-    const t = new Text({ text: word, style: { fontFamily: /[A-Z]/.test(word) ? FONT_NUM : FONT, fontWeight: /[A-Z]/.test(word) ? 'normal' : '900', fontSize: size, fill: PAL.ivory } });
-    t.anchor.set(0.5);
-    c.addChild(g, t);
-    return c;
-  }
-
-  private bigWord(text: string, size: number, fill: number = PAL.ivory, stroke: number = PAL.ink, font = FONT_DISPLAY) {
+  private bigWord(text: string, size: number, fill = 0xfff7f2, stroke = 0x5b2324, font = FONT_BRUSH) {
     const t = new Text({
       text,
       style: {
-        fontFamily: font, fontWeight: font === FONT_NUM ? 'normal' : '900', fontSize: size, fill, stroke: { color: stroke, width: Math.round(size / 9) }, letterSpacing: 4,
-        dropShadow: { color: 0x000000, alpha: 0.5, distance: 8, angle: Math.PI / 2, blur: 10 },
+        fontFamily: font, fontSize: size, fill, stroke: { color: stroke, width: Math.round(size / 9) }, letterSpacing: 6,
+        dropShadow: { color: 0x300b0b, alpha: 0.55, distance: 8, angle: Math.PI / 2, blur: 0 },
       },
     });
     t.anchor.set(0.5);
@@ -206,12 +175,12 @@ export class Moments {
   }
 
   /** A word stamped on the screen with a flash; the whole of "simple" mode's big moments. */
-  quick(text: string, color: number = PAL.ivory) {
+  quick(text: string, color = 0xfff7f2) {
     return this.run(`quick:${text}`, async (k) => {
       void this.d.post.flash(0.45, 200);
       this.d.camera.shake(8, 250);
       sfx.play('impact', 0.6);
-      await stamp(this.d.screen, text, 960, 470, { size: 130, color, hold: 380 * k });
+      await stamp(this.d.screen, text, 960, 470, { font: FONT_BRUSH, size: 130, color, hold: 380 * k });
     });
   }
 
@@ -223,52 +192,68 @@ export class Moments {
       const c = s.char;
       const root = this.layer();
       try {
-        // the screen turns into a card back, and she is dealt onto it as a court card
-        const bd = this.backdrop();
-        bd.alpha = 0;
-        root.addChild(bd);
-        void tween(bd, { alpha: 1 }, 120);
+        const head = this.toScreen(s.head);
+        const shade = this.shade(0.55);
+        // speed lines radiating from her
+        const lines = new Graphics();
+        for (let i = 0; i < 48; i++) {
+          const a = (i / 48) * Math.PI * 2 + Math.random() * 0.08;
+          const w = 0.01 + Math.random() * 0.018;
+          const r0 = 150 + Math.random() * 140;
+          lines.poly([Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a - w) * 2600, Math.sin(a - w) * 2600, Math.cos(a + w) * 2600, Math.sin(a + w) * 2600]);
+        }
+        lines.fill({ color: PAL.goldHi, alpha: 0.15 });
+        lines.position.set(head.x, head.y);
+        lines.alpha = 0;
+        root.addChild(shade, lines);
+        void tween(lines, { alpha: 1 }, 140);
+        void animate(1300, (p) => {
+          lines.rotation = p * 0.06;
+          lines.scale.set(1 + p * 0.2);
+        }, ease.linear);
         sfx.play('riser', 0.6);
-        const card = this.courtOf(seat, 600);
-        card.position.set(2400, 380);
-        card.rotation = 0.9;
-        root.addChild(card);
+        await wait(140);
+
+        // the band with her portrait and line
+        const band = new Container();
+        const poly = [-120, 360, 2040, 250, 2040, 690, -120, 800];
+        const g = this.luxe(poly, c.color, false);
+        g.addChild(new Graphics()
+          .poly([-120, 380, 2040, 270, 2040, 274, -120, 384]).fill(PAL.gold)
+          .poly([-120, 392, 2040, 282, 2040, 284, -120, 394]).fill({ color: PAL.gold, alpha: 0.6 })
+          .poly([-120, 766, 2040, 656, 2040, 658, -120, 768]).fill({ color: PAL.gold, alpha: 0.6 })
+          .poly([-120, 776, 2040, 666, 2040, 670, -120, 780]).fill(PAL.gold));
+        const mask = new Graphics().poly(poly).fill(0xffffff);
+        const portrait = new Sprite(s.poseTexture('angry'));
+        portrait.anchor.set(0.5, 0.39);
+        portrait.scale.set(1.05 * (800 / portrait.texture.height));
+        portrait.position.set(470, 520);
+        portrait.mask = mask;
+        const say = new Text({ text: `${c.name}「${line}」`, style: { fontFamily: FONT, fontSize: 40, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x300b0b, width: 7 } } });
+        say.position.set(900, 650);
+        say.rotation = -0.05;
+        band.addChild(g, portrait, mask, say);
+        band.x = -2200;
+        root.addChild(band);
         sfx.play('whoosh', 0.8);
-        await Promise.all([tween(card.position, { x: 560, y: 560 }, 280, ease.outCubic), tween(card, { rotation: -0.09 }, 280, ease.outBack)]);
+        await tween(band, { x: 0 }, 230, ease.outCubic);
 
-        // ALL IN. slides in beside her
-        const title = new Text({ text: 'ALL\nIN.', style: { fontFamily: FONT_NUM, fontSize: 230, lineHeight: 200, fill: PAL.ivory, letterSpacing: -4 } });
-        title.position.set(2000, 120);
-        const amount = new Text({ text: `全部押上  ${fmt(s.bet + s.stack)}`, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 52, fill: PAL.ivory } });
-        amount.position.set(1100, 560);
-        amount.alpha = 0;
-        root.addChild(title, amount);
-        await tween(title, { x: 1080 }, 170, ease.inCubic);
-        this.impact({ x: 1300, y: 330 }, 0.9);
-        void tween(amount, { alpha: 1 }, 160);
+        // "ALL IN" slams in from off screen
+        const title = this.bigWord('ALL IN', 200, PAL.goldHi, 0x2a0a10, FONT_NUM);
+        title.skew.x = -0.22;
+        title.position.set(2700, 470);
+        root.addChild(title);
+        await tween(title, { x: 1300 }, 170, ease.inCubic);
+        this.impact({ x: 1300, y: 470 }, 0.9);
+        await this.hold(560 * k);
 
-        // her line, on an ivory card
-        const say = new Text({ text: `「${line}」`, style: { fontFamily: FONT, fontSize: 36, fontWeight: '900', fill: PAL.ink, wordWrap: true, wordWrapWidth: 700, breakWords: true } });
-        const who = new Text({ text: `${c.court} ${c.name}`, style: { fontFamily: FONT, fontSize: 18, fontWeight: '700', fill: PAL.cobalt } });
-        const pw = Math.max(say.width, who.width) + 64, ph = say.height + who.height + 50;
-        const bubble = new Container();
-        bubble.addChild(new Graphics().roundRect(8, 16, pw, ph, 20).fill({ color: 0x000000, alpha: 0.35 }).roundRect(0, 0, pw, ph, 20).fill(PAL.ivory), say, who);
-        say.position.set(28, 20);
-        who.position.set(32, 26 + say.height);
-        bubble.position.set(1100, 700);
-        bubble.alpha = 0;
-        root.addChild(bubble);
-        void tween(bubble, { alpha: 1, y: 690 }, 180);
-        await this.hold(620 * k);
-
-        // out: the card is swept off and the back fades
+        // out
         await Promise.all([
-          tween(card.position, { x: -500 }, 220, ease.inCubic),
-          tween(card, { rotation: -0.6 }, 220),
-          tween(title, { alpha: 0 }, 200),
-          tween(amount, { alpha: 0 }, 160),
-          tween(bubble, { alpha: 0 }, 160),
-          tween(bd, { alpha: 0 }, 240),
+          tween(band, { x: 2200 }, 210, ease.inCubic),
+          tween(title.scale, { x: 1.5, y: 1.5 }, 210),
+          tween(title, { alpha: 0 }, 210),
+          tween(shade, { alpha: 0 }, 220),
+          tween(lines, { alpha: 0 }, 160),
         ]);
       } finally {
         root.destroy({ children: true });
@@ -282,7 +267,7 @@ export class Moments {
     const at = this.toScreen({ x: s.spot.plate.x, y: s.spot.plate.y - 70 });
     sfx.play('thud', 0.8);
     this.d.camera.shake(6, 200);
-    return stamp(this.d.screen, 'ALL IN', at.x, at.y, { font: FONT_NUM, size: 64, color: PAL.ivory, stroke: PAL.red, hold: 280 });
+    return stamp(this.d.screen, 'ALL IN', at.x, at.y, { font: FONT_NUM, size: 64, color: PAL.goldHi, stroke: 0x2a0a10, hold: 280 });
   }
 
   // ---------------- M6 VS ----------------
@@ -306,49 +291,74 @@ export class Moments {
     const st = this.d.stage;
     const root = this.layer();
     try {
-      const bd = this.backdrop();
-      bd.alpha = 0;
-      root.addChild(bd);
-      void tween(bd, { alpha: 1 }, 140);
-      // two court cards, dealt from either side, tilted toward each other
-      const L = this.courtOf(a, 470);
-      const R = this.courtOf(b, 470);
-      L.position.set(-400, 560);
-      L.rotation = -0.6;
-      R.position.set(2320, 560);
-      R.rotation = 0.6;
+      const shade = this.shade(0.6);
+      root.addChild(shade);
+      const panel = (seat: number, left: boolean) => {
+        const s = st.seats[seat];
+        const c = new Container();
+        const poly = left ? [-80, -40, 1020, -40, 900, 1120, -80, 1120] : [1040, -40, 2000, -40, 2000, 1120, 920, 1120];
+        const g = this.luxe(poly, s.char.color);
+        const mask = new Graphics().poly(poly).fill(0xffffff);
+        const pic = new Sprite(s.poseTexture('angry'));
+        pic.anchor.set(0.5, 0.39);
+        const sc = 1.35 * (800 / pic.texture.height);
+        pic.scale.set(left ? sc : -sc, sc);
+        pic.position.set(left ? 470 : 1450, 470);
+        pic.mask = mask;
+        const name = this.bigWord(s.char.name, 110);
+        name.position.set(left ? 300 : 1620, 900);
+        name.rotation = -0.06;
+        const style = new Text({ text: s.char.style, style: { fontFamily: FONT, fontSize: 30, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x300b0b, width: 6 } } });
+        style.anchor.set(0.5);
+        style.position.set(left ? 300 : 1620, 990);
+        c.addChild(g, pic, mask, name, style);
+        c.x = left ? -1200 : 1200;
+        return c;
+      };
+      const L = panel(a, true);
+      const R = panel(b, false);
       root.addChild(L, R);
       sfx.play('whoosh', 0.9);
-      await Promise.all([
-        tween(L.position, { x: 470 }, 260, ease.outCubic), tween(L, { rotation: -0.14 }, 260, ease.outBack),
-        tween(R.position, { x: 1450 }, 260, ease.outCubic), tween(R, { rotation: 0.14 }, 260, ease.outBack),
-      ]);
-      const names = [a, b].map((seat, i) => {
-        const n = this.bigWord(st.seats[seat].char.name, 64);
-        n.position.set(i ? 1150 : 770, 790);
-        n.alpha = 0;
-        root.addChild(n);
-        void tween(n, { alpha: 1 }, 160);
-        return n;
-      });
+      await Promise.all([tween(L, { x: 0 }, 240, ease.outCubic), tween(R, { x: 0 }, 240, ease.outCubic)]);
 
-      // VS, printed on a chip that is tossed onto the middle
-      const vs = this.chip(130, 'VS', 82);
-      vs.position.set(960, -200);
-      vs.rotation = -2;
+      // lightning down the split
+      const bolt = new Graphics();
+      const pts: number[] = [];
+      for (let i = 0; i <= 12; i++) pts.push(1030 - i * 10 + (i % 2 ? 1 : -1) * (20 + Math.random() * 30), -40 + i * 96);
+      const path = (g: Graphics, w: number, color: number, alpha: number) => {
+        g.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+        g.stroke({ width: w, color, alpha, join: 'miter' });
+      };
+      path(bolt, 34, PAL.gold, 0.4);
+      path(bolt, 10, PAL.goldHi, 1);
+      root.addChild(bolt);
+      sfx.play('thunder');
+      void this.d.post.flash(0.7, 260);
+      this.d.camera.shake(12, 350);
+      for (const al of [0.15, 1, 0.3, 1]) {
+        bolt.alpha = al;
+        await wait(55);
+      }
+
+      // VS
+      const vs = this.bigWord('VS', 280, 0xffd36b, 0x300b0b, FONT_NUM);
+      vs.skew.x = -0.18;
+      vs.position.set(965, 500);
+      vs.scale.set(3);
+      vs.alpha = 0;
       root.addChild(vs);
-      sfx.play('thud', 0.9);
-      await Promise.all([tween(vs.position, { y: 560 }, 220, ease.inCubic), tween(vs, { rotation: -0.12 }, 220)]);
-      this.impact({ x: 960, y: 560 }, 0.8);
+      await Promise.all([tween(vs.scale, { x: 1, y: 1 }, 180, ease.inCubic), tween(vs, { alpha: 1 }, 100)]);
+      this.impact({ x: 960, y: 520 }, 0.8);
       await this.hold(700 * k);
 
       await Promise.all([
-        tween(L.position, { x: -500 }, 220, ease.inCubic),
-        tween(R.position, { x: 2400 }, 220, ease.inCubic),
-        tween(vs.scale, { x: 0.2, y: 0.2 }, 200),
+        tween(L, { x: -1300 }, 220, ease.inCubic),
+        tween(R, { x: 1300 }, 220, ease.inCubic),
         tween(vs, { alpha: 0 }, 200),
-        ...names.map((n) => tween(n, { alpha: 0 }, 150)),
-        tween(bd, { alpha: 0 }, 240),
+        tween(vs.scale, { x: 1.6, y: 1.6 }, 200),
+        tween(bolt, { alpha: 0 }, 150),
+        tween(shade, { alpha: 0 }, 240),
       ]);
     } finally {
       root.destroy({ children: true });
@@ -356,44 +366,53 @@ export class Moments {
   }
 
   private async vsMelee(seats: number[], k: number) {
+    const st = this.d.stage;
     const root = this.layer();
     try {
-      const bd = this.backdrop();
-      bd.alpha = 0;
-      root.addChild(bd);
-      void tween(bd, { alpha: 1 }, 140);
+      const shade = this.shade(0.65);
+      root.addChild(shade);
       const n = seats.length;
-      // everyone's card, fanned like a hand
-      const cards = seats.map((seat, i) => {
-        const c = this.courtOf(seat, 330, 'angry', false);
-        const t = n === 1 ? 0 : i / (n - 1) - 0.5;
-        c.position.set(960 + t * 1300, 2000);
-        c.rotation = t * 0.5;
-        root.addChild(c);
-        return { c, x: 960 + t * 1300, y: 560 + Math.abs(t) * 120 };
+      const w = 1920 / n;
+      const slices = seats.map((seat, i) => {
+        const s = st.seats[seat];
+        const c = new Container();
+        const x0 = i * w;
+        const poly = [x0 + 60, -40, x0 + w + 60, -40, x0 + w - 60, 1120, x0 - 60, 1120];
+        const g = this.luxe(poly, s.char.color);
+        const mask = new Graphics().poly(poly).fill(0xffffff);
+        const pic = new Sprite(s.poseTexture('angry'));
+        pic.anchor.set(0.5, 0.39);
+        pic.scale.set(1.15 * (800 / pic.texture.height));
+        pic.position.set(x0 + w / 2, 470);
+        pic.mask = mask;
+        const name = this.bigWord(s.char.name, 90);
+        name.position.set(x0 + w / 2, 930);
+        c.addChild(g, pic, mask, name);
+        c.y = i % 2 ? 1200 : -1200;
+        return c;
       });
+      root.addChild(...slices);
       sfx.play('whoosh', 0.9);
-      for (const { c, x, y } of cards) {
-        void tween(c.position, { x, y }, 260, ease.outBack);
+      for (const c of slices) {
+        void tween(c, { y: 0 }, 240, ease.outCubic);
         await wait(70);
       }
       await wait(200);
-      const title = this.chip(150, '混战', 84);
-      title.position.set(960, 520);
+      const title = this.bigWord('混战', 230, 0xffd36b);
+      title.position.set(960, 470);
+      const sub = this.bigWord(`${n} 人全下`, 70, 0xffffff, 0x300b0b, FONT_NUM);
+      sub.position.set(960, 640);
       title.scale.set(3);
-      title.alpha = 0;
-      const sub = this.bigWord(`${n} 人全下`, 64);
-      sub.position.set(960, 730);
       root.addChild(title, sub);
       sfx.play('thunder');
-      await Promise.all([tween(title.scale, { x: 1, y: 1 }, 180, ease.inCubic), tween(title, { alpha: 1 }, 100)]);
-      this.impact({ x: 960, y: 520 }, 0.9);
+      await tween(title.scale, { x: 1, y: 1 }, 180, ease.inCubic);
+      this.impact({ x: 960, y: 480 }, 0.9);
       await this.hold(800 * k);
       await Promise.all([
-        ...cards.map(({ c }) => tween(c.position, { y: 1700 }, 220, ease.inCubic)),
+        ...slices.map((c, i) => tween(c, { y: i % 2 ? 1300 : -1300 }, 220, ease.inCubic)),
         tween(title, { alpha: 0 }, 200),
         tween(sub, { alpha: 0 }, 200),
-        tween(bd, { alpha: 0 }, 240),
+        tween(shade, { alpha: 0 }, 240),
       ]);
     } finally {
       root.destroy({ children: true });
@@ -433,7 +452,7 @@ export class Moments {
   showdownOpen() {
     return this.run('showdown', async (k) => {
       sfx.play('thud', 0.8);
-      void stamp(this.d.screen, '胜负揭晓', 960, 430, { size: 130, color: PAL.ivory, stroke: PAL.ink, hold: 260 * k, rotate: -0.06 });
+      void stamp(this.d.screen, '胜负揭晓', 960, 430, { font: FONT_BRUSH, size: 130, color: 0xfff7f2, stroke: 0x5b2324, hold: 260 * k, rotate: -0.06 });
       await this.hold(560);
     });
   }
@@ -464,7 +483,7 @@ export class Moments {
         this.d.particles.sparks(hit.x, hit.y, 50);
         this.impact({ x: 960, y: 480 }, 1);
         await Promise.all(cards.map(({ c, x }) => tween(c.position, { x }, 200, ease.outBack)));
-        await stamp(root, '冤家牌！', 960, 760, { size: 130, color: PAL.ivory, stroke: PAL.cobalt, hold: 380 * k });
+        await stamp(root, '冤家牌！', 960, 760, { font: FONT_BRUSH, size: 130, color: 0xffd36b, hold: 380 * k });
         await Promise.all([...cards.map(({ c }) => tween(c, { alpha: 0 }, 200)), tween(shade, { alpha: 0 }, 220)]);
       } finally {
         root.destroy({ children: true });
@@ -482,7 +501,7 @@ export class Moments {
 
   private extrasText(root: Container, extras: string[], y: number, x = 960) {
     if (!extras.length) return;
-    const t = new Text({ text: extras.map((e) => `＋${e}`).join('  '), style: { fontFamily: FONT, fontSize: 30, fontWeight: '900', fill: PAL.ivory, stroke: { color: PAL.cobalt, width: 6 } } });
+    const t = new Text({ text: extras.map((e) => `＋${e}`).join('  '), style: { fontFamily: FONT, fontSize: 30, fontWeight: '900', fill: 0xffd36b, stroke: { color: 0x300b0b, width: 6 } } });
     t.anchor.set(0.5);
     t.position.set(x, y);
     root.addChild(t);
@@ -493,14 +512,14 @@ export class Moments {
     const sprites = st.cardSprites(best, seat);
     sfx.play('chime', 0.8);
     sprites.forEach((c, i) => {
-      void wait(i * 70).then(() => c.shine(0xcfd6ff, 420));
+      void wait(i * 70).then(() => c.shine(0xffd36b, 420));
       const p = st.toLocal(c.getGlobalPosition());
       void wait(i * 70).then(() => this.d.particles.sparkle(p.x, p.y, 8, 70));
     });
     const root = this.layer();
     try {
       this.extrasText(root, extras, 690);
-      await stamp(root, '葫芦', 960, 600, { size: 150, color: PAL.ivory, stroke: PAL.cobalt, hold: 420 * k });
+      await stamp(root, '葫芦', 960, 600, { font: FONT_BRUSH, size: 150, color: 0xffd36b, hold: 420 * k });
     } finally {
       root.destroy({ children: true });
     }
@@ -528,8 +547,8 @@ export class Moments {
           tween(c.scale, { x: 1.05, y: 1.05 }, 360, ease.outBack),
           tween(c, { rotation: (i - 1.5) * 0.04 }, 360),
         ])));
-      cards.forEach((c, i) => void wait(i * 60).then(() => c.shine(0xcfd6ff, 380)));
-      const word = this.bigWord('四条', 170, PAL.ivory, PAL.cobalt);
+      cards.forEach((c, i) => void wait(i * 60).then(() => c.shine(0xffd36b, 380)));
+      const word = this.bigWord('四条', 170, 0xffd36b);
       word.position.set(960, 740);
       word.scale.set(2.6);
       word.alpha = 0;
@@ -569,13 +588,13 @@ export class Moments {
         ]);
       }));
       // a rainbow sweep, card by card
-      const rainbow = [PAL.ivory, PAL.cobaltHi, PAL.redHi, PAL.ivory, PAL.cobaltHi];
+      const rainbow = [0xff6b6b, 0xffb347, 0xffe66d, 0x6bd6a0, 0x7aa8ff];
       for (let i = 0; i < cards.length; i++) {
         void cards[i].shine(rainbow[i], 360);
         sfx.play('chime', 0.35);
         await wait(90);
       }
-      const word = this.bigWord('同花顺', 170, PAL.ivory, PAL.cobalt);
+      const word = this.bigWord('同花顺', 170, 0xffffff, 0x4b3a8f);
       word.position.set(960, 790);
       word.scale.set(2.6);
       word.alpha = 0;
@@ -584,7 +603,7 @@ export class Moments {
       await Promise.all([tween(word.scale, { x: 1, y: 1 }, 200, ease.inCubic), tween(word, { alpha: 1 }, 120)]);
       this.impact({ x: 960, y: 700 }, 1);
       sfx.play('cheer', 0.8);
-      const colors = [PAL.ivory, PAL.cobaltHi, PAL.redHi, 0xffffff, PAL.cobaltTint];
+      const colors = [0xffd36b, 0xe04fb0, 0x52c0cf, 0xf69375, 0xb9a7f0];
       for (let i = 0; i < 5; i++) {
         const p = this.toWorld({ x: 260 + Math.random() * 1400, y: 120 + Math.random() * 260 });
         void wait(i * 160).then(() => this.d.particles.firework(p.x, p.y, colors[i]));
@@ -599,8 +618,8 @@ export class Moments {
   private async royal(best: string[], extras: string[], k: number) {
     const root = this.layer();
     try {
-      const shade = this.shade(0.92, 0x07060c);
-      const beam = new Graphics().poly([880, -40, 1040, -40, 1340, 1120, 580, 1120]).fill({ color: 0xdfe4ff, alpha: 0.14 });
+      const shade = this.shade(0.92, 0x07040a);
+      const beam = new Graphics().poly([880, -40, 1040, -40, 1340, 1120, 580, 1120]).fill({ color: 0xfff1d0, alpha: 0.16 });
       beam.alpha = 0;
       root.addChild(shade, beam);
       sfx.play('riser', 0.5);
@@ -618,7 +637,7 @@ export class Moments {
         cards.push(c);
         sfx.play('bell', 0.7);
         await Promise.all([tween(c.position, { y: 430 }, 380, ease.outBack), tween(c, { rotation: 0 }, 380)]);
-        void c.shine(0xcfd6ff, 380);
+        void c.shine(0xffd36b, 380);
         await wait(140 * k + 60);
       }
       // the burst
@@ -629,10 +648,10 @@ export class Moments {
       const top = this.toWorld({ x: 960, y: -40 });
       this.d.particles.confetti(180, top.x, top.y);
       const mid = this.toWorld({ x: 960, y: 430 });
-      for (let i = 0; i < 4; i++) void wait(i * 140).then(() => this.d.particles.firework(mid.x + (i - 1.5) * 380, mid.y - 200, i % 2 ? PAL.ivory : PAL.cobaltHi, 44));
-      const en = this.bigWord('ROYAL FLUSH', 120, PAL.ivory, PAL.cobalt, FONT_NUM);
+      for (let i = 0; i < 4; i++) void wait(i * 140).then(() => this.d.particles.firework(mid.x + (i - 1.5) * 380, mid.y - 200, i % 2 ? 0xffd36b : 0xe04fb0, 44));
+      const en = this.bigWord('ROYAL FLUSH', 120, 0xffd36b, 0x5b2324, FONT_NUM);
       en.position.set(960, 700);
-      const zh = this.bigWord('皇家同花顺', 120);
+      const zh = this.bigWord('皇家同花顺', 120, 0xfff7f2);
       zh.position.set(960, 850);
       for (const t of [en, zh]) {
         t.scale.set(2.4);
@@ -658,44 +677,52 @@ export class Moments {
       const s = stage.seats[seat];
       const root = this.layer();
       try {
-        const shade = this.shade(0.7);
-        root.addChild(shade);
-        // the cards she showed are tossed onto the left
+        const shade = this.shade(0.55, 0x12030a);
+        const beam = new Graphics().poly([860, -40, 1060, -40, 1300, 1120, 620, 1120]).fill({ color: 0xff8fa8, alpha: 0.18 });
+        beam.blendMode = 'add';
+        beam.alpha = 0;
+        root.addChild(shade, beam);
+        void tween(beam, { alpha: 1 }, 250);
+        // her two cards spin to the middle, facing you
         const clones = cards.map((code) => this.cloneCard(code, stage.cardSprites([code], seat)[0], root));
         sfx.play('whoosh', 0.8);
         await Promise.all(clones.map((c, i) =>
           Promise.all([
-            tween(c.position, { x: 360 + i * 190, y: 470 + i * 50 }, 380, ease.outCubic),
-            tween(c, { rotation: i ? 0.1 : -0.24 }, 380, ease.outCubic),
-            tween(c.scale, { x: 2.1, y: 2.1 }, 380, ease.outBack),
+            tween(c.position, { x: 880 + i * 165, y: 470 }, 380, ease.outCubic),
+            tween(c, { rotation: (i - 0.5) * 0.12 + Math.PI * 2 * (i ? 1 : -1) }, 380, ease.outCubic),
+            tween(c.scale, { x: 1.05, y: 1.05 }, 380, ease.outBack),
           ])));
-
-        // her card is turned over, and it is the joker
-        const joker = this.jokerCard(s.poseTexture('smug'));
-        const back = cardBack(500, 700, 38);
-        const holder = new Container();
-        holder.addChild(back, joker);
-        joker.visible = false;
-        holder.position.set(1150, 530);
-        holder.rotation = 0.06;
-        holder.scale.set(0.6);
-        holder.alpha = 0;
-        root.addChild(holder);
-        await Promise.all([tween(holder.scale, { x: 1, y: 1 }, 220, ease.outBack), tween(holder, { alpha: 1 }, 120)]);
-        await tween(holder.scale, { x: 0 }, 130, ease.inCubic);
-        back.visible = false;
-        joker.visible = true;
-        sfx.play('flip');
-        await tween(holder.scale, { x: 1 }, 160, ease.outBack);
-        this.impact({ x: 1150, y: 530 }, 0.7);
+        clones.forEach((c) => (c.rotation %= Math.PI * 2));
+        // the stamp, slanted across the cards, with ink flying
+        const word = this.bigWord('BLUFF!', 190, 0xff4f7b, 0x1a0408, FONT_NUM);
+        word.rotation = -0.2;
+        word.position.set(960, 480);
+        word.scale.set(3);
+        word.alpha = 0;
+        const ink = new Graphics();
+        for (let i = 0; i < 26; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = 120 + Math.random() * 300;
+          const sz = 3 + Math.random() * 7;
+          ink.poly([0, -sz * 1.6, sz * 0.5, 0, 0, sz * 1.6, -sz * 0.5, 0].map((v, j) => v + (j % 2 ? 480 + Math.sin(a) * r * 0.6 : 960 + Math.cos(a) * r)));
+        }
+        ink.fill({ color: PAL.goldHi, alpha: 0.9 });
+        ink.alpha = 0;
+        root.addChild(ink, word);
+        await Promise.all([tween(word.scale, { x: 1, y: 1 }, 170, ease.inCubic), tween(word, { alpha: 1 }, 100)]);
+        ink.alpha = 1;
+        ink.scale.set(0.6);
+        ink.pivot.set(960, 480);
+        ink.position.set(960, 480);
+        void tween(ink.scale, { x: 1, y: 1 }, 220, ease.outCubic);
+        this.impact({ x: 960, y: 480 }, 0.7);
         sfx.play('ooh', 0.9);
-
-        const fooled = victims.map((v) => stage.seats[v].char.name).join(' · ');
-        const cap = new Text({ text: `${s.char.court} ${s.char.name}  用这手牌诈唬成功${fooled ? `\n被骗弃牌：${fooled}` : ''}`, style: { fontFamily: FONT, fontSize: 28, fontWeight: '900', fill: PAL.ivory, lineHeight: 44, stroke: { color: PAL.ink, width: 6 } } });
-        cap.position.set(250, 800);
-        root.addChild(cap);
+        const name = new Text({ text: `${s.char.name} 是在诈唬！`, style: { fontFamily: FONT, fontSize: 40, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x300b0b, width: 7 } } });
+        name.anchor.set(0.5);
+        name.position.set(960, 680);
+        root.addChild(name);
         for (const v of victims) stage.seats[v].fooled();
-        const p = this.toWorld({ x: 1150, y: 530 });
+        const p = this.toWorld({ x: 960, y: 480 });
         particles.sparkle(p.x, p.y, 16, 360);
         await this.hold(900 * k);
         await tween(root, { alpha: 0 }, 260);
@@ -703,37 +730,6 @@ export class Moments {
         root.destroy({ children: true });
       }
     });
-  }
-
-  /** The joker: JOKER down the corners in red, her portrait, and 诈唬 across the bottom. */
-  private jokerCard(tex: Texture): Container {
-    const w = 500, h = 700;
-    const c = new Container();
-    const g = new Graphics()
-      .roundRect(-w / 2 + 16, -h / 2 + 34, w, h, 38).fill({ color: 0x000000, alpha: 0.4 })
-      .roundRect(-w / 2, -h / 2, w, h, 38).fill(PAL.ivory)
-      .rect(-w / 2 + 96, -h / 2 + 50, w - 192, h - 100).fill(0xf6dadc).stroke({ width: 3, color: PAL.red });
-    const pic = new Sprite(tex);
-    pic.anchor.set(0.5, 1);
-    pic.scale.set((h * 0.5) / tex.height);
-    pic.position.set(0, 40);
-    const mask = new Graphics().rect(-w / 2 + 96, -h / 2 + 50, w - 192, h * 0.5).fill(0xffffff);
-    pic.mask = mask;
-    const letters = (flip: boolean) => {
-      const t = new Text({ text: 'J\nO\nK\nE\nR', style: { fontFamily: FONT_NUM, fontSize: 30, lineHeight: 32, fill: PAL.red, align: 'center' } });
-      t.anchor.set(0.5, 0);
-      t.position.set(flip ? w / 2 - 44 : -w / 2 + 44, flip ? h / 2 - 24 : -h / 2 + 24);
-      if (flip) t.rotation = Math.PI;
-      return t;
-    };
-    const word = new Text({ text: '诈唬', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 112, fill: PAL.red } });
-    word.anchor.set(0.5);
-    word.position.set(0, 150);
-    const en = new Text({ text: 'B L U F F', style: { fontFamily: FONT_NUM, fontSize: 28, fill: PAL.ink } });
-    en.anchor.set(0.5);
-    en.position.set(0, 240);
-    c.addChild(g, pic, mask, letters(false), letters(true), word, en);
-    return c;
   }
 
   // ---------------- M11 caught bluff / hero call ----------------
@@ -762,7 +758,7 @@ export class Moments {
         const at = this.toScreen({ x: caller_.spot.cards.x, y: caller_.spot.cards.y - 120 });
         await wait(250);
         await stamp(root, godCall ? '神跟注！' : '抓到了！', Math.min(1660, Math.max(260, at.x)), Math.max(260, at.y), {
-          size: 120, color: PAL.ivory, stroke: godCall ? PAL.cobalt : PAL.red, hold: 600 * k,
+          font: FONT_BRUSH, size: 120, color: godCall ? 0xffd36b : 0xffffff, stroke: godCall ? 0x5b2324 : 0x2a8e9e, hold: 600 * k,
         });
       } finally {
         stage.drain(null);
@@ -833,13 +829,13 @@ export class Moments {
             crack.lineTo(x, y);
           }
         }
-        crack.stroke({ width: 9, color: PAL.ink, alpha: 0.35 }).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
+        crack.stroke({ width: 9, color: 0x300b0b, alpha: 0.35 }).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
         crack.pivot.set(960, 520);
         crack.position.set(960, 520);
         crack.scale.set(0.1);
         root.addChild(crack);
         void tween(crack.scale, { x: 1, y: 1 }, 140, ease.outCubic);
-        const word = this.bigWord('逆转！', 230, PAL.ivory, PAL.cobalt);
+        const word = this.bigWord('逆转！', 230, 0xffd36b);
         word.position.set(960, 500);
         word.scale.set(3);
         word.alpha = 0;
@@ -900,7 +896,7 @@ export class Moments {
           l.position.set(260 + i * 233, 30);
           l.scale.set(4.2, 2.6);
           l.blendMode = 'add';
-          l.tint = 0xdfe4ff;
+          l.tint = 0xffe2b8;
           l.alpha = 0;
           root.addChild(l);
           return l;
@@ -919,9 +915,9 @@ export class Moments {
         // the sash
         const sc = s.spot.height / 600;
         const ribbon = new Graphics()
-          .roundRect(-270, -40, 540, 80, 40).fill(PAL.ivory)
-          .roundRect(-260, -30, 520, 60, 30).stroke({ width: 2, color: PAL.cobalt });
-        const word = new Text({ text: '本局主役', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 50, fill: PAL.cobalt, letterSpacing: 10 } });
+          .poly([-250, -36, 250, -36, 276, 0, 250, 36, -250, 36, -276, 0]).fill(0x7a0f22).stroke({ width: 4, color: PAL.gold })
+          .rect(-250, -26, 500, 2).fill(PAL.goldHi).rect(-250, 24, 500, 2).fill(PAL.goldHi);
+        const word = new Text({ text: '本局主役', style: { fontFamily: FONT_BRUSH, fontSize: 58, fill: 0xffe08a, stroke: { color: 0x5b2324, width: 6 }, letterSpacing: 10 } });
         word.anchor.set(0.5);
         const reveal = new Graphics().rect(-290, -50, 580, 100).fill(0xffffff);
         reveal.pivot.x = -290;
@@ -944,7 +940,7 @@ export class Moments {
         particles.chipRain(1300, 45);
         sfx.play('cheer', 0.9);
         const head = this.toScreen(s.head);
-        const gain = this.bigWord(`+${fmt(amount)}`, 76, PAL.ivory, PAL.cobalt, FONT_NUM);
+        const gain = this.bigWord(`+${fmt(amount)}`, 76, 0xffd36b, 0x5b2324, FONT_NUM);
         const scale = this.d.screen.toLocal(stage.toGlobal({ x: 0, y: s.spot.height })).y - this.d.screen.toLocal(stage.toGlobal({ x: 0, y: 0 })).y;
         gain.position.set(Math.min(1700, Math.max(220, head.x)), Math.max(150, head.y - scale * 0.5));
         gain.alpha = 0;
@@ -1004,8 +1000,8 @@ export class EquityBars {
       const y = duel ? 172 : 150 + i * 50;
       const w = duel ? 640 : 520;
       const h = duel ? 36 : 28;
-      const name = new Text({ text: e.name, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: duel ? 44 : 32, fill: PAL.ivory, stroke: { color: PAL.ink, width: 6 } } });
-      const pctText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: duel ? 30 : 24, fill: PAL.ivory, stroke: { color: PAL.ink, width: 5 } } });
+      const name = new Text({ text: e.name, style: { fontFamily: FONT_BRUSH, fontSize: duel ? 44 : 32, fill: PAL.ivory, stroke: { color: 0x0a0408, width: 6 } } });
+      const pctText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: duel ? 30 : 24, fill: 0xffd36b, stroke: { color: 0x300b0b, width: 5 } } });
       if (duel) {
         name.anchor.set(left ? 0 : 1, 1);
         name.position.set(left ? x : x + w, y - 4);
@@ -1025,12 +1021,12 @@ export class EquityBars {
       box.addChild(frame, dmg, fill, flash, name, pctText);
       this.root.addChild(box);
       const row: BarRow = { seat: e.seat, color: e.color, x, y, w, h, dir: duel && !left ? -1 : 1, frame, dmg, fill, flash, pctText, box, shown: 0, dmgShown: 0 };
-      this.drawSeg(frame, row, 1, PAL.ink, 0.85, true);
-      this.drawSeg(flash, row, 1, PAL.red, 0.9);
+      this.drawSeg(frame, row, 1, 0x0a0408, 0.85, true);
+      this.drawSeg(flash, row, 1, 0xff3b4a, 0.9);
       this.rows.push(row);
     });
     if (duel) {
-      const vs = new Text({ text: 'VS', style: { fontFamily: FONT_NUM, fontSize: 40, fill: PAL.ivory, stroke: { color: PAL.cobalt, width: 7 } } });
+      const vs = new Text({ text: 'VS', style: { fontFamily: FONT_NUM, fontSize: 40, fill: 0xffd36b, stroke: { color: 0x300b0b, width: 7 } } });
       vs.anchor.set(0.5);
       vs.position.set(960, 190);
       this.root.addChild(vs);
@@ -1048,7 +1044,7 @@ export class EquityBars {
     const x0 = r.dir === 1 ? r.x : r.x + r.w - len;
     const x1 = x0 + len;
     g.poly([x0 + s, r.y, x1 + s, r.y, x1, r.y + r.h, x0, r.y + r.h]).fill({ color, alpha });
-    if (border) g.poly([r.x + s, r.y, r.x + r.w + s, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h]).stroke({ width: 3, color: PAL.ivory });
+    if (border) g.poly([r.x + s, r.y, r.x + r.w + s, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h]).stroke({ width: 3, color: PAL.gold });
     else g.rect(Math.min(x0, x1) + s * 0.6, r.y + 4, Math.max(0, len - s * 0.4), 5).fill({ color: 0xffffff, alpha: 0.35 * alpha });
   }
 

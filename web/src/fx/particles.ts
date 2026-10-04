@@ -117,7 +117,7 @@ export class Particles {
     }
   }
 
-  /** Paper confetti in the card colours. */
+  /** Paper confetti in the warm palette. */
   confetti(n = 120, x = 960, y = -40, spread = 1900) {
     if (!this.paperTex) {
       const c = document.createElement('canvas');
@@ -128,7 +128,7 @@ export class Particles {
       g.fillRect(0, 0, 18, 10);
       this.paperTex = Texture.from(c);
     }
-    const colors = [0xf2ecdf, 0x2b3fd6, 0x7c8cff, 0xc8202f, 0xffffff, 0xdce0fa];
+    const colors = [0xffe3a3, 0xe8c27a, 0xc9a25a, 0xf6ecd9, 0xb81d3c, 0xffffff];
     for (let i = 0; i < n; i++) {
       this.spawn(this.paperTex, x + (Math.random() - 0.5) * spread, y - Math.random() * 200, {
         vx: (Math.random() - 0.5) * 260, vy: 160 + Math.random() * 260, g: 120, vr: (Math.random() - 0.5) * 10,
@@ -138,7 +138,7 @@ export class Particles {
   }
 
   /** A firework: a ring of glowing sparks that droop and fade. */
-  firework(x: number, y: number, color = 0xf2ecdf, n = 36) {
+  firework(x: number, y: number, color = 0xffd36b, n = 36) {
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.1;
       const v = 320 + Math.random() * 160;

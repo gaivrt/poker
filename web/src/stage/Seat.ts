@@ -1,19 +1,16 @@
-// One player at the table (docs/10): opponents are standing court cards with their
-// portrait inside (hot-swappable PNG or placeholder), name and stack underneath, cards
-// on the table, chip stack, and the mind-game decorations (bubbles, stickers, gesture
-// captions, thinking clock). Folding turns the court card face down.
-import { Container, Graphics, Text, type Texture } from 'pixi.js';
+// One player at the first-person table: character art (hot-swappable PNG or
+// placeholder), paper name plate on the rim, cards on the felt, chip stack, and the
+// mind-game decorations (bubbles, stickers, gesture captions, thinking clock).
+import { ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { type Character, EXPRESSION_COLOR, EXPRESSION_LABEL } from '../characters';
 import { Expression } from '../engine';
 import { type Face, makeSticker } from '../fx/stickers';
 import { CardSprite } from '../table/CardSprite';
-import { FONT, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, SEAT_CARD, type SeatSpot, fmt, headOf } from '../table/layout';
+import { FONT, FONT_BRUSH, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
-import { CourtCard, cardBack } from './court';
-import { CHIP_COLORS, PAL, type Pose } from './painter';
+import { CHIP_COLORS, PAL, type Pose, paintGlow } from './painter';
 
-/** How a status tag under the name is drawn. */
-export type TagKind = 'plain' | 'bet' | 'alert' | 'muted';
+let glowTex: Texture | null = null;
 
 /** A stack of chips whose height grows with the amount: each chip has a thickness,
  *  edge stripes and a lit top; the whole stack throws a shadow on the felt. */
@@ -51,9 +48,6 @@ function shade(c: number, k: number): number {
   return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
 }
 
-
-const CW = SEAT_CARD.w, CH = SEAT_CARD.h;
-
 export class Seat extends Container {
   readonly seat: number;
   readonly char: Character;
@@ -61,21 +55,19 @@ export class Seat extends Container {
   readonly isHero: boolean;
   readonly head: Point;
 
-  /** The court card; tap it to aim table talk at this player. */
+  /** The character art; tap it to aim table talk at this player. */
   readonly avatar = new Container();
-  /** Everything on or above the table (plate, chips, cards, bubbles); drawn in front of the table. */
+  /** Everything on or above the table (plate, chips, cards, bubbles); drawn in front of the table rim. */
   readonly front = new Container();
-  private court: CourtCard;
-  private back: Container;
-  private outline = new Graphics();
+  private figure = new Sprite();
+  private spotlight = new Sprite();
   private poses: Record<Pose, Texture>;
   private basePose: Pose = 'idle';
-  private pose: Pose = 'idle';
+  private gray = new ColorMatrixFilter();
 
   private plate = new Container();
-  private nameText: Text;
   private stackText: Text;
-  private tag = new Container();
+  private tag: Text;
   private outStamp = new Container();
   readonly cards: CardSprite[];
   private betBox = new Container();
@@ -87,8 +79,8 @@ export class Seat extends Container {
   private handMask = new Graphics();
   private flames = new Graphics();
   private burning = false;
+  private dimmed = false;
   private standing = false;
-  private faceDown = false;
   private exprChip = new Container();
   private caption = new Container();
   private captionTimer = 0;
@@ -114,100 +106,92 @@ export class Seat extends Container {
     this.isHero = isHero;
     this.poses = poses;
     this.head = headOf(spot);
+    this.gray.desaturate();
 
-    // The court card, standing behind the table edge.
-    this.court = new CourtCard({ w: CW, h: CH, court: char.court, texture: poses.idle });
-    this.back = cardBack(CW, CH);
-    this.back.visible = false;
-    const shadow = new Graphics().roundRect(-CW / 2 + 8, -CH / 2 + 16, CW, CH, 14).fill({ color: 0x000000, alpha: 0.45 });
-    this.avatar.addChild(shadow, this.outline, this.court, this.back);
-    this.avatar.position.set(spot.base.x, this.cardY);
-    this.avatar.rotation = spot.tilt;
-    this.avatar.visible = !isHero;
+    // Character art, anchored at the waist, scaled to the spot's depth.
+    this.figure.anchor.set(0.5, 1);
+    this.setPose('idle');
+    this.avatar.position.set(spot.base.x, spot.base.y);
+    this.avatar.addChild(this.figure);
     this.avatar.eventMode = 'static';
     this.avatar.cursor = 'pointer';
+    // Warm light behind whoever is acting.
+    glowTex ??= Texture.from(paintGlow(256, 'rgba(255,236,214,0.9)'));
+    this.spotlight.texture = glowTex;
+    this.spotlight.anchor.set(0.5);
+    this.spotlight.width = spot.height * 1.1;
+    this.spotlight.height = spot.height * 1.25;
+    this.spotlight.position.set(this.head.x, this.head.y + spot.height * 0.1);
+    this.spotlight.alpha = 0;
+    this.spotlight.blendMode = 'add';
 
-    // Name and stack under the card; yours sit on an ivory panel.
-    this.nameText = new Text({ text: char.name, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: isHero ? 24 : 20, fill: isHero ? PAL.ink : PAL.ivory, stroke: isHero ? undefined : { color: PAL.ink, width: 4 } } });
-    this.nameText.anchor.set(0, 0.5);
-    this.stackText = new Text({ text: '0', style: { fontFamily: FONT_NUM, fontSize: isHero ? 30 : 19, fill: isHero ? PAL.ink : PAL.ivory, stroke: isHero ? undefined : { color: PAL.ink, width: 4 } } });
+    // Paper name plate taped to the rim.
+    const pw = isHero ? 210 : 190, ph = 62;
+    const paper = new Graphics()
+      .roundRect(-pw / 2 + 2, -ph / 2 + 6, pw, ph, 8).fill({ color: 0x000000, alpha: 0.45 })
+      .roundRect(-pw / 2, -ph / 2, pw, ph, 8).fill({ color: 0x120c10, alpha: 0.92 })
+      .roundRect(-pw / 2, -ph / 2, pw, ph, 8).stroke({ width: 2, color: PAL.gold, alpha: 0.85 })
+      .roundRect(-pw / 2 + 4, -ph / 2 + 4, pw - 8, ph - 8, 5).stroke({ width: 1, color: PAL.gold, alpha: 0.3 })
+      .rect(-pw / 2 + 4, -ph / 2 + 8, 4, ph - 16).fill(char.color);
+    const name = new Text({ text: char.name, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 23, fill: PAL.ivory } });
+    name.anchor.set(0, 0.5);
+    name.position.set(-pw / 2 + 18, -12);
+    this.stackText = new Text({ text: '0', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: PAL.gold } });
     this.stackText.anchor.set(0, 0.5);
-    if (isHero) this.plate.addChild(new Graphics().roundRect(-150, -40, 300, 80, 18).fill(PAL.ivory));
-    this.plate.addChild(this.nameText, this.stackText);
+    this.stackText.position.set(-pw / 2 + 18, 14);
+    this.plate.addChild(paper, name, this.stackText);
     this.plate.position.set(spot.plate.x, spot.plate.y);
-    this.layoutPlate();
+    this.plate.rotation = spot.plateTilt;
 
-    this.tag.position.set(spot.plate.x, spot.plate.y + (isHero ? -66 : 32));
+    this.tag = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 21, fill: 0xffffff, stroke: { color: 0x0a0608, width: 5 } } });
+    this.tag.anchor.set(0.5);
+    this.tag.position.set(spot.plate.x, spot.plate.y - ph / 2 - 22);
 
-    // Cards on the table (yours are big, in the foreground)
+    // Cards on the felt (yours are big, in the foreground)
     const size = isHero ? HERO_CARD : OPP_CARD;
     this.cards = [new CardSprite(size.w, size.h), new CardSprite(size.w, size.h)];
-    this.cards.forEach((c) => (c.visible = false));
-    this.placeCards();
+    this.cards.forEach((c, i) => {
+      if (isHero) {
+        c.position.set(spot.cards.x + i * 200, spot.cards.y + i * 6);
+        c.rotation = i === 0 ? -0.14 : 0.12;
+      } else {
+        c.position.set(spot.cards.x + (i - 0.5) * size.w * 0.55 * spot.cardScale, spot.cards.y);
+        c.rotation = (i - 0.5) * 0.18;
+        c.scale.set(spot.cardScale, spot.cardScale * 0.82); // lying on the felt
+      }
+      c.visible = false;
+    });
 
     // Bet
-    this.betText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: 20, fill: PAL.ivory, stroke: { color: PAL.ink, width: 4 } } });
+    this.betText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 20, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 5 } } });
     this.betText.anchor.set(0, 0.5);
     this.betBox.position.set(spot.bet.x, spot.bet.y);
     this.betBox.visible = false;
 
-    this.handLabel = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: isHero ? 34 : 24, fill: PAL.ivory, stroke: { color: PAL.ink, width: 6 } } });
+    this.handLabel = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: isHero ? 34 : 26, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 7 } } });
     this.handLabel.anchor.set(0.5);
-    this.handLabel.position.set(isHero ? spot.cards.x + 95 : spot.cards.x, isHero ? spot.cards.y - 150 : spot.cards.y + 50);
+    this.handLabel.position.set(isHero ? spot.cards.x + 100 : spot.cards.x, isHero ? spot.cards.y - 175 : spot.cards.y + 60);
 
-    this.badge.position.set(spot.plate.x, spot.plate.y + (isHero ? -110 : 66));
+    this.badge.position.set(spot.plate.x, spot.plate.y + 52);
     this.badge.visible = false;
-    const cardTop = spot.base.y - spot.height;
-    this.exprChip.position.set(spot.base.x + CW / 2 - 20, cardTop - 8);
-    this.caption.position.set(this.head.x, this.head.y + 70);
-    this.thinking = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: 18, fill: PAL.ivory, stroke: { color: PAL.ink, width: 4 } } });
+    this.exprChip.position.set(this.head.x - spot.height * 0.2, this.head.y - spot.height * 0.3);
+    this.caption.position.set(this.head.x, this.head.y + spot.height * 0.12);
+    this.thinking = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 5 } } });
     this.thinking.anchor.set(0.5);
-    this.thinking.position.set(spot.plate.x, isHero ? spot.plate.y - 100 : cardTop - 20);
+    this.thinking.position.set(spot.plate.x, spot.plate.y - ph / 2 - 50);
     const toCenter = { x: 960 - this.head.x, y: 560 - this.head.y };
     const len = Math.hypot(toCenter.x, toCenter.y) || 1;
-    this.stickerLayer.position.set(this.head.x + (toCenter.x / len) * 170, this.head.y + (toCenter.y / len) * 60 - (isHero ? 140 : 0));
-    this.outStamp.position.set(spot.base.x, this.cardY);
+    this.stickerLayer.position.set(this.head.x + (toCenter.x / len) * spot.height * 0.32, this.head.y + (toCenter.y / len) * 40 - (isHero ? 120 : 0));
+    this.outStamp.position.set(this.head.x, this.head.y + spot.height * 0.15);
 
-    this.addChild(this.avatar, this.outStamp, this.exprChip);
+    this.addChild(this.spotlight, this.avatar, this.outStamp, this.exprChip);
     this.handLabel.mask = this.handMask;
     this.handMask.rect(-400, -60, 800, 120).fill(0xffffff);
     this.handMask.position.copyFrom(this.handLabel.position);
     this.front.addChild(this.flames, this.plate, this.tag, this.betBox, ...this.cards, this.handLabel, this.badge, this.thinking, this.caption, this.bubble, this.stickerLayer, this.handMask);
   }
 
-  /** Where the court card's centre rests. */
-  private get cardY() {
-    return this.spot.base.y - this.spot.height / 2;
-  }
-
-  private layoutPlate() {
-    const gap = 10;
-    if (this.isHero) {
-      this.nameText.x = -126;
-      this.stackText.x = this.nameText.x + this.nameText.width + 16;
-      return;
-    }
-    const total = this.nameText.width + gap + this.stackText.width;
-    this.nameText.x = -total / 2;
-    this.stackText.x = this.nameText.x + this.nameText.width + gap;
-  }
-
-  private placeCards() {
-    const spot = this.spot;
-    this.cards.forEach((c, i) => {
-      if (this.isHero) {
-        c.position.set(spot.cards.x + i * 190, spot.cards.y + i * 4);
-        c.rotation = i === 0 ? -0.1 : 0.1;
-        c.scale.set(1);
-      } else {
-        c.position.set(spot.cards.x + (i - 0.5) * OPP_CARD.w * 0.6 * spot.cardScale, spot.cards.y);
-        c.rotation = (i - 0.5) * 0.2;
-        c.scale.set(spot.cardScale, spot.cardScale * 0.86); // lying on the table
-      }
-    });
-  }
-
-  /** Chips leave from (and arrive at) the name. */
+  /** Chips leave from (and arrive at) the name plate. */
   get anchor(): Point {
     return this.spot.plate;
   }
@@ -224,8 +208,10 @@ export class Seat extends Container {
   }
 
   setPose(pose: Pose) {
-    this.pose = pose;
-    this.court.setTexture(this.poseTexture(pose));
+    const tex = this.poses[pose] ?? this.poses.idle;
+    this.figure.texture = tex;
+    const k = this.spot.height / tex.height;
+    this.figure.scale.set(k);
   }
 
   /** Back to the resting pose for the current expression. */
@@ -235,53 +221,66 @@ export class Seat extends Container {
 
   tick(t: number) {
     // breathing
-    if (!this.isHero) this.court.setTexture(this.poseTexture(this.pose), 1 + Math.sin(t / 900 + this.seat) * 0.008);
-    if (this.active && !this.burning) this.outline.alpha = 0.7 + 0.3 * Math.sin(t / 220);
-    if (this.thinkStart) this.thinking.text = `${((performance.now() - this.thinkStart) / 1000).toFixed(1)}s`;
-    if (this.burning) this.drawBurn(t);
+    const k = this.spot.height / this.figure.texture.height;
+    this.figure.scale.set(k, k * (1 + Math.sin(t / 900 + this.seat) * 0.008));
+    if (this.active) this.spotlight.alpha = 0.45 + 0.12 * Math.sin(t / 260);
+    if (this.thinkStart) this.thinking.text = `思考中 ${((performance.now() - this.thinkStart) / 1000).toFixed(1)}s`;
+    if (this.burning) this.drawFlames(t);
   }
 
-  private drawOutline(color: number, width: number) {
-    this.outline.clear().roundRect(-CW / 2 - width / 2 - 3, -CH / 2 - width / 2 - 3, CW + width + 6, CH + width + 6, 18).stroke({ width, color });
-    this.outline.alpha = 1;
-  }
-
-  /** ALL IN: the card (or your panel) is edged in pulsing card red until the hand ends. */
+  /** ALL IN: the name plate burns with a ring of fire until the hand ends. */
   setBurning(on: boolean) {
     this.burning = on;
     this.flames.clear();
-    if (!on) this.outline.clear();
   }
 
-  private drawBurn(t: number) {
-    const pulse = 0.6 + 0.4 * Math.sin(t / 140 + this.seat);
-    if (this.isHero) {
-      const { x, y } = this.spot.plate;
-      this.flames.clear().roundRect(x - 158, y - 48, 316, 96, 24).stroke({ width: 6, color: PAL.red, alpha: pulse });
-    } else {
-      this.drawOutline(PAL.red, 7);
-      this.outline.alpha = pulse;
+  private drawFlames(t: number) {
+    const pw = (this.isHero ? 210 : 190) + 16, ph = 62 + 14;
+    const { x, y } = this.spot.plate;
+    const g = this.flames.clear();
+    g.position.set(x, y);
+    g.rotation = this.spot.plateTilt;
+    const flick = 0.75 + 0.25 * Math.sin(t / 70 + this.seat) * Math.sin(t / 113);
+    g.roundRect(-pw / 2 - 6, -ph / 2 - 6, pw + 12, ph + 12, 18).stroke({ width: 12, color: 0xff5a2f, alpha: 0.35 * flick });
+    g.roundRect(-pw / 2, -ph / 2, pw, ph, 14).stroke({ width: 5, color: 0xffb347, alpha: 0.9 * flick });
+    // tongues of flame along the top edge
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const fx = -pw / 2 + 10 + (i / (n - 1)) * (pw - 20);
+      const h = 14 + 16 * (0.5 + 0.5 * Math.sin(t / 90 + i * 1.7 + this.seat * 3));
+      g.moveTo(fx - 9, -ph / 2).quadraticCurveTo(fx - 4, -ph / 2 - h * 0.6, fx, -ph / 2 - h).quadraticCurveTo(fx + 4, -ph / 2 - h * 0.6, fx + 9, -ph / 2).closePath();
     }
+    g.fill({ color: 0xff7a2f, alpha: 0.85 * flick });
   }
 
-  /** M10: she folded to a bluff that was then shown. Her card shakes and she reacts. */
+  /** M10: she folded to a bluff that was then shown. The plate cracks and she reacts. */
   fooled() {
-    const x0 = this.avatar.x;
-    void animate(320, (p) => (this.avatar.x = x0 + Math.sin(p * Math.PI * 8) * 7 * (1 - p)), ease.linear);
+    const pw = this.isHero ? 210 : 190, ph = 62;
+    const crack = new Graphics();
+    let x = -pw * 0.1, y = -ph / 2;
+    crack.moveTo(x, y);
+    for (let i = 1; i <= 6; i++) {
+      x += (Math.random() - 0.4) * 22;
+      y = -ph / 2 + (ph * i) / 6;
+      crack.lineTo(x, y);
+      if (i === 3) crack.moveTo(x, y).lineTo(x + 26, y - 10).moveTo(x, y);
+    }
+    crack.stroke({ width: 3, color: 0x5b2324, alpha: 0.85 });
+    crack.label = 'crack';
+    this.plate.addChild(crack);
+    const x0 = this.plate.x;
+    void animate(320, (p) => (this.plate.x = x0 + Math.sin(p * Math.PI * 8) * 7 * (1 - p)), ease.linear);
     if (!this.isHero) this.setPose(Math.random() < 0.5 ? 'angry' : 'shock');
-    const t = new Text({ text: '被骗了！', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 24, fill: PAL.ivory } });
+    const t = new Text({ text: '被骗了！', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 28, fill: 0xffffff, stroke: { color: 0x7a2a8f, width: 6 } } });
     t.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-t.width / 2 - 14, -20, t.width + 28, 40, 20).fill(PAL.red);
-    const pill = new Container();
-    pill.addChild(bg, t);
-    pill.position.set(this.spot.plate.x, this.spot.plate.y - (this.isHero ? 70 : 40));
-    pill.rotation = (Math.random() - 0.5) * 0.2;
-    pill.scale.set(0.3);
-    this.front.addChild(pill);
-    void tween(pill.scale, { x: 1, y: 1 }, 240, ease.outBack)
+    t.position.set(this.spot.plate.x, this.spot.plate.y - 50);
+    t.rotation = (Math.random() - 0.5) * 0.3;
+    t.scale.set(0.3);
+    this.front.addChild(t);
+    void tween(t.scale, { x: 1, y: 1 }, 240, ease.outBack)
       .then(() => wait(1300))
-      .then(() => tween(pill, { alpha: 0, y: pill.y - 20 }, 300))
-      .then(() => pill.destroy({ children: true }));
+      .then(() => tween(t, { alpha: 0, y: t.y - 20 }, 300))
+      .then(() => t.destroy());
   }
 
   shakePlate() {
@@ -289,51 +288,41 @@ export class Seat extends Container {
     void animate(420, (p) => (this.plate.x = x0 + Math.sin(p * Math.PI * 10) * 9 * (1 - p)), ease.linear);
   }
 
-  /** M14: knocked out. The card turns face down and drops away. Resolves with where the ash should fly from. */
+  /** M14: the name plate catches fire and burns away. Resolves with where the ash should fly from. */
   async burnAway(): Promise<Point> {
     this.setBurning(true);
-    await wait(450);
+    await tween(this.plate.scale, { x: 1.06, y: 1.06 }, 200, ease.outBack);
+    await wait(350);
     this.setBurning(false);
-    const at = { x: this.spot.base.x, y: this.cardY };
-    await this.turn(true);
-    void tween(this.plate, { alpha: 0 }, 260);
+    const at = { ...this.spot.plate };
+    void tween(this.plate.scale, { x: 0.6, y: 0.2 }, 260, ease.inCubic);
+    await tween(this.plate, { alpha: 0 }, 260);
     for (const c of this.cards) c.visible = false;
     this.betBox.visible = false;
     return at;
   }
 
-  /** Flip the court card over (face down = folded or out). */
-  private async turn(down: boolean, ms = 260) {
-    if (this.isHero || down === this.faceDown) return;
-    this.faceDown = down;
-    const sx = Math.abs(this.avatar.scale.x) || 1;
-    await tween(this.avatar.scale, { x: 0 }, ms / 2, ease.inCubic);
-    this.court.visible = !down;
-    this.back.visible = down;
-    await tween(this.avatar.scale, { x: sx }, ms / 2, ease.outCubic);
-  }
-
   /** Showdown spotlight: everyone but the player being shown drops into shadow. */
   dim(on: boolean) {
+    this.dimmed = on;
     if (this.out) return;
-    this.avatar.alpha = on ? 0.45 : 1;
+    this.figure.tint = on ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xffffff;
   }
 
-  /** 本局主役: the winner's card rises in the victory pose (and settles back). */
+  /** 本局主役: the winner stands up in the victory pose (and sits back down). */
   async standUp(on: boolean) {
     if (on === this.standing) return;
     this.standing = on;
     if (on) {
       this.setPose('win');
-      this.avatar.alpha = 1;
-      void this.turn(false, 200);
+      this.figure.tint = 0xffffff;
       await Promise.all([
-        tween(this.avatar, { y: this.cardY - 40 }, 380, ease.outBack),
-        tween(this.avatar.scale, { x: 1.15, y: 1.15 }, 380, ease.outBack),
+        tween(this.avatar, { y: this.spot.base.y - this.spot.height * 0.12 }, 380, ease.outBack),
+        tween(this.avatar.scale, { x: 1.1, y: 1.1 }, 380, ease.outBack),
       ]);
     } else {
       this.restPose();
-      await Promise.all([tween(this.avatar, { y: this.cardY }, 300), tween(this.avatar.scale, { x: 1, y: 1 }, 300)]);
+      await Promise.all([tween(this.avatar, { y: this.spot.base.y }, 300), tween(this.avatar.scale, { x: 1, y: 1 }, 300)]);
     }
   }
 
@@ -348,7 +337,6 @@ export class Seat extends Container {
   setStack(n: number) {
     this.stack = n;
     this.stackText.text = fmt(n);
-    this.layoutPlate();
   }
 
   setBet(n: number) {
@@ -362,43 +350,30 @@ export class Seat extends Container {
     this.betBox.addChild(s, this.betText);
   }
 
-  /** Whoever is acting: the card lifts off the table, edged in light cobalt. */
   setActive(on: boolean) {
-    if (on === this.active) return;
     this.active = on;
-    if (this.out || this.isHero) return;
-    if (!this.burning) {
-      if (on) this.drawOutline(PAL.cobaltHi, 5);
-      else this.outline.clear();
-    }
-    if (!this.standing) void tween(this.avatar, { y: this.cardY - (on ? 16 : 0) }, 220, ease.outCubic);
+    if (!on) this.spotlight.alpha = 0;
+    if (this.out) return;
+    this.figure.tint = on || this.isHero ? 0xffffff : this.dimmed ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xeee2e0;
+    void tween(this.avatar.scale, { x: on ? 1.03 : 1, y: on ? 1.03 : 1 }, 250);
   }
 
-  setTag(text: string, kind: TagKind = 'plain') {
-    this.tag.removeChildren().forEach((c) => c.destroy());
-    if (!text) return;
-    const fill = kind === 'bet' ? PAL.cobalt : kind === 'alert' ? 0xffffff : kind === 'muted' ? PAL.grey : PAL.ivory;
-    const t = new Text({ text, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 16, fill } });
-    t.anchor.set(0.5);
-    if (kind === 'bet' || kind === 'alert') {
-      const bg = new Graphics().roundRect(-t.width / 2 - 12, -14, t.width + 24, 28, 14).fill(kind === 'bet' ? PAL.ivory : PAL.red);
-      this.tag.addChild(bg);
-    } else {
-      t.style.stroke = { color: PAL.ink, width: 4 };
-    }
-    this.tag.addChild(t);
+  setTag(text: string, color = 0xffffff) {
+    this.tag.text = text;
+    this.tag.style.fill = color;
   }
 
   markAllIn() {
     this.allIn = true;
-    this.setTag('ALL IN', 'alert');
+    this.setTag('ALL IN', 0xff5a6a);
   }
 
   setFolded(folded: boolean) {
     this.folded = folded;
-    void this.turn(folded);
+    this.figure.tint = folded ? 0x8f8088 : 0xffffff;
+    // lean back into the shadow
+    void tween(this.avatar, { y: this.spot.base.y + (folded ? 14 : 0) }, 300);
     if (folded) {
-      this.setActive(false);
       for (const c of this.cards)
         if (c.visible) {
           if (this.isHero) c.alpha = 0.45;
@@ -409,18 +384,16 @@ export class Seat extends Container {
 
   setOut(place: string) {
     this.out = true;
-    this.outline.clear();
-    void this.turn(true);
-    this.avatar.alpha = 0.5;
-    this.plate.alpha = 0.5;
-    this.setTag(place, 'muted');
+    this.figure.filters = [this.gray];
+    this.figure.tint = 0x9a9098;
+    this.avatar.alpha = 0.6;
+    this.setTag(place, 0xbfb8e6);
     this.cards.forEach((c) => (c.visible = false));
     this.outStamp.removeChildren().forEach((c) => c.destroy());
-    const t = new Text({ text: `OUT ${place.replace(/[^0-9]/g, '')}`, style: { fontFamily: FONT_NUM, fontSize: 30, fill: PAL.ivory } });
+    const t = new Text({ text: `OUT · ${place.replace(/[^0-9]/g, '')}`, style: { fontFamily: FONT_NUM, fontWeight: '900', fontSize: 40, fill: 0xd02a48, stroke: { color: 0x0a0608, width: 8 } } });
     t.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-t.width / 2 - 16, -24, t.width + 32, 48, 24).fill(PAL.red);
-    this.outStamp.addChild(bg, t);
-    this.outStamp.rotation = -0.12;
+    t.rotation = -0.2;
+    this.outStamp.addChild(t);
     this.outStamp.scale.set(2.2);
     void tween(this.outStamp.scale, { x: 1, y: 1 }, 260, ease.inCubic);
   }
@@ -428,32 +401,33 @@ export class Seat extends Container {
   newHand(stack: number) {
     this.setStack(stack);
     this.setBet(0);
+    this.plate.getChildrenByLabel('crack').forEach((c) => c.destroy());
     this.setActive(false);
     this.folded = false;
     this.allIn = false;
     this.setBurning(false);
+    this.dimmed = false;
     this.standing = false;
     this.avatar.scale.set(1);
-    this.avatar.y = this.cardY;
+    this.avatar.y = this.spot.base.y;
     this.stopThinking();
     if (this.expression !== Expression.Angry) this.setExpression(Expression.Calm);
     this.restPose();
     if (!this.out) {
-      this.faceDown = false;
-      this.court.visible = true;
-      this.back.visible = false;
-      this.avatar.alpha = 1;
+      this.figure.tint = 0xffffff;
       this.setTag('');
     }
     this.showHand(null);
     this.showEquity(null);
-    this.cards.forEach((c) => {
+    this.cards.forEach((c, i) => {
       c.visible = false;
       c.alpha = 1;
       c.highlight(false);
       c.set(null);
+      if (this.isHero) c.position.set(this.spot.cards.x + i * 200, this.spot.cards.y + i * 6);
+      else c.position.set(this.spot.cards.x + (i - 0.5) * OPP_CARD.w * 0.55 * this.spot.cardScale, this.spot.cards.y);
+      if (!this.isHero) c.scale.set(this.spot.cardScale, this.spot.cardScale * 0.82);
     });
-    this.placeCards();
   }
 
   /** Card i flies from the dealer, spinning, and lands face down. */
@@ -481,11 +455,11 @@ export class Seat extends Container {
       const c = this.cards[i];
       c.visible = true;
       c.alpha = 1;
-      // At showdown opponents' cards lift off the table and turn to face you, much bigger.
+      // At showdown opponents' cards lift off the felt and turn to face you, much bigger.
       const lift = showdown && !this.isHero;
-      if (lift) void tween(c, { y: this.spot.cards.y - 30, x: this.spot.cards.x + (i - 0.5) * OPP_CARD.w * 1.25 }, 260);
-      if (c.code !== codes[i] || !c.faceUp) await c.flipTo(codes[i], 240, true, lift ? { x: 1.9, y: 1.9 } : undefined);
-      else if (lift) await tween(c.scale, { x: 1.9, y: 1.9 }, 240, ease.outBack);
+      if (lift) void tween(c, { y: this.spot.cards.y - 40, x: this.spot.cards.x + (i - 0.5) * OPP_CARD.w * 1.25 }, 260);
+      if (c.code !== codes[i] || !c.faceUp) await c.flipTo(codes[i], 240, true, lift ? { x: 2.1, y: 2.1 } : undefined);
+      else if (lift) await tween(c.scale, { x: 2.1, y: 2.1 }, 240, ease.outBack);
     }
   }
 
@@ -493,10 +467,12 @@ export class Seat extends Container {
     for (const c of this.cards) c.highlight(!!best && !!c.code && best.includes(c.code));
   }
 
-  /** The hand's name under the cards; `brush` wipes it in from the left. */
+  /** The hand's name under the cards; `brush` writes it in calligraphy, stroke by stroke. */
   showHand(text: string | null, brush = false) {
     this.handLabel.text = text ?? '';
-    this.handLabel.style.fontSize = brush ? (this.isHero ? 44 : 32) : this.isHero ? 34 : 24;
+    this.handLabel.style.fontFamily = brush ? FONT_BRUSH : FONT_DISPLAY;
+    this.handLabel.style.fontWeight = brush ? 'normal' : '900';
+    this.handLabel.style.fontSize = brush ? (this.isHero ? 52 : 40) : this.isHero ? 34 : 26;
     if (!brush || !text) {
       this.handMask.clear().rect(-400, -60, 800, 120).fill(0xffffff);
       this.handMask.pivot.x = 0;
@@ -504,6 +480,7 @@ export class Seat extends Container {
       this.handMask.scale.x = 1;
       return;
     }
+    // wipe in from the left like a brush stroke
     const w = this.handLabel.width;
     this.handMask.clear().rect(-w / 2 - 10, -60, w + 20, 120).fill(0xffffff);
     this.handMask.pivot.x = -w / 2 - 10;
@@ -516,10 +493,9 @@ export class Seat extends Container {
     this.badge.removeChildren().forEach((c) => c.destroy());
     this.badge.visible = pct !== null;
     if (pct === null) return;
-    const ahead = pct >= 50;
-    const label = new Text({ text: `${pct.toFixed(pct >= 99.95 || pct < 0.05 ? 0 : 1)}%`, style: { fontFamily: FONT_NUM, fontSize: 20, fill: ahead ? PAL.cobalt : PAL.ivory } });
+    const label = new Text({ text: `胜率 ${pct.toFixed(pct >= 99.95 || pct < 0.05 ? 0 : 1)}%`, style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: 0xffffff } });
     label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 14, -17, label.width + 28, 34, 17).fill(ahead ? PAL.ivory : PAL.ink).stroke({ width: 2, color: PAL.ivory });
+    const bg = new Graphics().roundRect(-label.width / 2 - 14, -19, label.width + 28, 38, 6).fill(pct >= 50 ? 0x17574b : 0x6e0f22).stroke({ width: 2, color: PAL.gold });
     this.badge.addChild(bg, label);
   }
 
@@ -529,9 +505,9 @@ export class Seat extends Container {
     this.restPose();
     this.exprChip.removeChildren().forEach((c) => c.destroy());
     if (e === Expression.Calm) return;
-    const label = new Text({ text: EXPRESSION_LABEL[e], style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 18, fill: PAL.ink } });
-    label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 12, -16, label.width + 24, 32, 16).fill(PAL.ivory).stroke({ width: 3, color: EXPRESSION_COLOR[e] });
+    const label = new Text({ text: EXPRESSION_LABEL[e], style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 20, fill: 0xffffff } });
+    label.position.set(12, 5);
+    const bg = new Graphics().roundRect(0, 0, label.width + 24, 34, 6).fill({ color: 0x120c10, alpha: 0.9 }).stroke({ width: 2, color: EXPRESSION_COLOR[e] });
     this.exprChip.addChild(bg, label);
     this.exprChip.scale.set(1.4);
     void tween(this.exprChip.scale, { x: 1, y: 1 }, 220, ease.outBack);
@@ -539,12 +515,12 @@ export class Seat extends Container {
 
   showCaption(text: string) {
     this.caption.removeChildren().forEach((c) => c.destroy());
-    const label = new Text({ text, style: { fontFamily: FONT, fontSize: 18, fontWeight: '700', fill: PAL.ivory } });
+    const label = new Text({ text, style: { fontFamily: FONT, fontSize: 20, fontWeight: '700', fill: 0xffffff } });
     label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 14, -17, label.width + 28, 34, 17).fill({ color: PAL.ink, alpha: 0.9 });
+    const bg = new Graphics().roundRect(-label.width / 2 - 14, -18, label.width + 28, 36, 6).fill({ color: 0x0a0608, alpha: 0.85 }).stroke({ width: 1.5, color: PAL.gold, alpha: 0.6 });
     this.caption.addChild(bg, label);
     this.caption.alpha = 0;
-    const y0 = this.head.y + 70;
+    const y0 = this.head.y + this.spot.height * 0.12;
     this.caption.y = y0 + 12;
     const id = ++this.captionTimer;
     void tween(this.caption, { alpha: 1, y: y0 }, 200)
@@ -559,7 +535,7 @@ export class Seat extends Container {
     st.scale.set(0.2);
     this.stickerLayer.addChild(st);
     const id = ++this.stickerTimer;
-    void tween(st.scale, { x: 0.75, y: 0.75 }, 260, ease.outBack)
+    void tween(st.scale, { x: 0.85, y: 0.85 }, 260, ease.outBack)
       .then(() => wait(2000))
       .then(() => (id === this.stickerTimer ? tween(st, { alpha: 0 }, 300) : undefined))
       .then(() => {
@@ -591,23 +567,17 @@ export class Seat extends Container {
 
   say(text: string, ms = 1800, toName?: string) {
     this.bubble.removeChildren().forEach((c) => c.destroy());
-    const label = new Text({ text: toName ? `→${toName}  ${text}` : text, style: { fontFamily: FONT, fontSize: 22, fontWeight: '700', fill: PAL.ink, wordWrap: true, wordWrapWidth: 280, breakWords: true } });
-    const pw = label.width + 32, ph = label.height + 22;
-    const ax = this.head.x;
-    const cardTop = this.spot.base.y - this.spot.height;
-    let top = this.isHero ? this.spot.plate.y - 120 - ph : cardTop - ph - 16;
-    // no room above the far cards: speak from beside them instead
-    const beside = top < 8;
-    if (beside) top = cardTop + 30;
-    const left = beside
-      ? (ax < 960 ? ax + CW / 2 + 16 : ax - CW / 2 - 16 - pw)
-      : Math.min(Math.max(ax - pw / 2, 40), 1880 - pw);
+    const label = new Text({ text: toName ? `→${toName}  ${text}` : text, style: { fontFamily: FONT, fontSize: 24, fontWeight: '700', fill: PAL.ivory, wordWrap: true, wordWrapWidth: 300, breakWords: true } });
+    const pw = label.width + 32, ph = label.height + 20;
+    const ax = this.isHero ? this.head.x + 90 : this.head.x;
+    const top = this.isHero ? this.head.y - 230 : this.head.y - this.spot.height * 0.42 - ph;
+    const left = Math.min(Math.max(ax - pw / 2, 40), 1880 - pw);
     const bg = new Graphics()
-      .roundRect(4, 8, pw, ph, 16).fill({ color: 0x000000, alpha: 0.35 })
-      .roundRect(0, 0, pw, ph, 16).fill(PAL.ivory)
-      .rect(16, ph - 4, 40, 4).fill(this.char.color);
-    if (!beside) bg.poly([ax - left - 10, ph - 1, ax - left + 10, ph - 1, ax - left, ph + 14]).fill(PAL.ivory);
-    label.position.set(16, 11);
+      .roundRect(4, 6, pw, ph, 10).fill({ color: 0x000000, alpha: 0.4 })
+      .poly([ax - left - 12, ph - 2, ax - left + 12, ph - 2, ax - left, ph + 18]).fill({ color: 0x140c12, alpha: 0.95 })
+      .roundRect(0, 0, pw, ph, 10).fill({ color: 0x140c12, alpha: 0.95 }).stroke({ width: 2.5, color: this.char.color })
+      .roundRect(3, 3, pw - 6, ph - 6, 8).stroke({ width: 1, color: PAL.gold, alpha: 0.35 });
+    label.position.set(16, 10);
     this.bubble.addChild(bg, label);
     this.bubble.position.set(left, Math.max(8, top));
     this.bubble.alpha = 0;

@@ -351,28 +351,29 @@ export class Overlay {
     this.home.classList.remove('hidden');
     this.home.innerHTML = `
       <div class="topbar">
-        <button class="me" title="改名"><span class="ava">A♠</span>
+        <button class="me" title="改名"><span class="ava">${esc(profile.name.slice(0, 1))}</span>
           <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分</small></span>
           <span class="prog"><i style="width:${Math.round(t.progress * 100)}%"></i></span></button>
-        <div class="daily"><b>TODAY</b><span>打完 1 局段位赛</span><span>发现 1 个破绽</span></div>
-        <button class="gear" aria-label="设置"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F2ECDF" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></button>
+        <div class="daily"><b>今日任务</b><span>打完 1 局段位赛</span><span>发现 1 个破绽</span></div>
+        <button class="round gear">设置</button>
       </div>
-      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">EVERY FACE IS A CARD.</div></div>
+      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">ROYAL NIGHT · HOLD'EM</div></div>
       <div class="modes">
-        <button class="poster ranked"><span class="idx">A<i>♠</i></span>
-          <span><b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位</small>
-          <span class="tier"><em>${t.name}</em>${t.next ? `距 ${t.next} 还差 ${t.toNext} 分` : '已是最高段位'}</span></span>
-          <span class="cta">开始匹配</span></button>
+        <button class="poster ranked"><span class="tape"></span>
+          <b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位</small>
+          <span class="tier"><em>${t.name}</em>${t.next ? `距 ${t.next} 还差 ${t.toNext} 分` : '已是最高段位'}</span></button>
         <div class="poster-row">
-          <button class="poster practice"><span class="idx">K<i>♣</i></span><span><b>单人练习</b><small>自选赛制和难度</small></span></button>
-          <button class="poster friends" disabled><span class="idx red">Q<i>♥</i></span><span><b>好友房</b><small>开发中</small></span></button>
-          <button data-k="roster"><span class="idx red">J<i>♦</i></span><span><b>角色牌</b><small>6 位对手</small></span></button>
-          <button data-k="tells"><span class="idx">10<i>♠</i></span><span><b>破绽图鉴<sup>${found}/${total}</sup></b><small>读人收集</small></span></button>
-          <button data-k="replays"><span class="idx">9<i>♣</i></span><span><b>牌谱</b><small>开发中</small></span></button>
-          <button data-k="rules"><span class="idx red">8<i>♦</i></span><span><b>规则</b><small>德州扑克入门</small></span></button>
+          <button class="poster practice"><span class="tape"></span><b>单人练习</b><small>自选赛制和难度</small></button>
+          <button class="poster friends" disabled><span class="tape"></span><b>好友房</b><small>开发中</small></button>
+        </div>
+        <div class="rounds">
+          <button data-k="roster"><i>角</i>角色</button>
+          <button data-k="tells"><i>鉴</i>图鉴<sup>${found}/${total}</sup></button>
+          <button data-k="replays"><i>谱</i>牌谱</button>
+          <button data-k="rules"><i>规</i>规则</button>
         </div>
       </div>
-      <div class="news"><b>SEASON 01</b><span>原型测试中：角色立绘为占位，联机段位赛已开放。</span></div>`;
+      <div class="news"><b>公告</b><span>原型测试中：对手为 AI，角色立绘为占位，联机段位赛正在开发。</span></div>`;
     const q = <T extends HTMLElement>(sel: string) => this.home.querySelector(sel) as T;
     q<HTMLButtonElement>('.gear').onclick = () => this.openSettings();
     q<HTMLButtonElement>('.me').onclick = () => this.renameDialog(profile.name, (n) => {
@@ -381,7 +382,7 @@ export class Overlay {
     });
     q<HTMLButtonElement>('.ranked').onclick = () => this.formatDialog(true, (f) => h.online(f === 'standard' ? 'standard' : 'quick'), profile);
     q<HTMLButtonElement>('.practice').onclick = () => this.formatDialog(false, (f, d) => h.start(f, d, false), profile);
-    this.home.querySelectorAll<HTMLButtonElement>('.poster-row button[data-k]').forEach((b) =>
+    this.home.querySelectorAll<HTMLButtonElement>('.rounds button').forEach((b) =>
       (b.onclick = () => {
         const k = b.dataset.k;
         if (k === 'roster') this.rosterDialog();
@@ -848,7 +849,7 @@ export class Overlay {
           sfx.play('cheer', 0.9);
           this.modal.querySelector('.fin')!.classList.add('crowned');
           const box = q<HTMLElement>('.confetti');
-          const colors = ['#f2ecdf', '#2b3fd6', '#7c8cff', '#c8202f', '#ffffff'];
+          const colors = ['#ffe3a3', '#e8c27a', '#c9a25a', '#f6ecd9', '#b81d3c', '#fff'];
           box.innerHTML = Array.from({ length: 70 }, (_, k) =>
             `<i style="left:${Math.random() * 100}%;background:${colors[k % colors.length]};animation-delay:${Math.random() * 0.8}s;animation-duration:${2.2 + Math.random() * 1.6}s;transform:rotate(${Math.random() * 360}deg)"></i>`).join('');
         }
