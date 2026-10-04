@@ -3,7 +3,7 @@
 import { artUrl } from '../stage/assets';
 
 export type SfxName =
-  | 'deal' | 'flip' | 'chip' | 'slide' | 'thud' | 'whoosh' | 'heartbeat' | 'impact' | 'chime' | 'riser' | 'tick' | 'cheer';
+  | 'deal' | 'flip' | 'chip' | 'slide' | 'thud' | 'whoosh' | 'heartbeat' | 'impact' | 'chime' | 'riser' | 'tick' | 'cheer' | 'thunder' | 'bell';
 
 class Sfx {
   private ctx: AudioContext | null = null;
@@ -117,6 +117,8 @@ class Sfx {
       case 'chime': [1318, 1760, 2637].forEach((f, i) => this.tone(ctx, out, f, f, 0.9, 'sine', 0.25, i * 0.06)); break;
       case 'riser': this.burst(ctx, out, 1.2, 'bandpass', 200, 0.35, 2, 5000); break;
       case 'tick': this.tone(ctx, out, 2000, 1800, 0.03, 'square', 0.12); break;
+      case 'thunder': this.burst(ctx, out, 1.1, 'lowpass', 2400, 0.8, 0.7, 120); this.tone(ctx, out, 60, 28, 0.9, 'sawtooth', 0.35); break;
+      case 'bell': [880, 1320, 2200, 3300].forEach((f, i) => this.tone(ctx, out, f, f * 0.998, 1.6 - i * 0.3, 'sine', 0.3 / (i + 1))); break;
       case 'cheer': this.burst(ctx, out, 1.4, 'bandpass', 1500, 0.35, 0.5, 900); break;
     }
   }

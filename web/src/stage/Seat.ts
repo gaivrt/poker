@@ -1,14 +1,16 @@
 // One player at the first-person table: character art (hot-swappable PNG or
 // placeholder), paper name plate on the rim, cards on the felt, chip stack, and the
 // mind-game decorations (bubbles, stickers, gesture captions, thinking clock).
-import { ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { type Character, EXPRESSION_COLOR, EXPRESSION_LABEL } from '../characters';
 import { Expression } from '../engine';
 import { type Face, makeSticker } from '../fx/stickers';
 import { CardSprite } from '../table/CardSprite';
-import { FONT, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
+import { FONT, FONT_BRUSH, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
 import { ease, tween, wait } from '../tween';
-import type { Pose } from './painter';
+import { type Pose, paintGlow } from './painter';
+
+let glowTex: Texture | null = null;
 
 /** A stack of chips whose height grows with the amount. */
 export function chipStack(amount: number, unit: number, scale = 1): Container {
@@ -40,7 +42,7 @@ export class Seat extends Container {
   /** Everything on or above the table (plate, chips, cards, bubbles); drawn in front of the table rim. */
   readonly front = new Container();
   private figure = new Sprite();
-  private spotlight = new Graphics();
+  private spotlight = new Sprite();
   private poses: Record<Pose, Texture>;
   private basePose: Pose = 'idle';
   private gray = new ColorMatrixFilter();
@@ -56,6 +58,11 @@ export class Seat extends Container {
   private bubbleTimer = 0;
   private badge = new Container();
   private handLabel: Text;
+  private handMask = new Graphics();
+  private flames = new Graphics();
+  private burning = false;
+  private dimmed = false;
+  private standing = false;
   private exprChip = new Container();
   private caption = new Container();
   private captionTimer = 0;
@@ -91,7 +98,11 @@ export class Seat extends Container {
     this.avatar.eventMode = 'static';
     this.avatar.cursor = 'pointer';
     // Warm light behind whoever is acting.
-    this.spotlight.ellipse(0, 0, spot.height * 0.42, spot.height * 0.5).fill({ color: 0xfff1e0, alpha: 0.55 });
+    glowTex ??= Texture.from(paintGlow(256, 'rgba(255,236,214,0.9)'));
+    this.spotlight.texture = glowTex;
+    this.spotlight.anchor.set(0.5);
+    this.spotlight.width = spot.height * 1.1;
+    this.spotlight.height = spot.height * 1.25;
     this.spotlight.position.set(this.head.x, this.head.y + spot.height * 0.1);
     this.spotlight.alpha = 0;
     this.spotlight.blendMode = 'add';
@@ -155,7 +166,10 @@ export class Seat extends Container {
     this.outStamp.position.set(this.head.x, this.head.y + spot.height * 0.15);
 
     this.addChild(this.spotlight, this.avatar, this.outStamp, this.exprChip);
-    this.front.addChild(this.plate, this.tag, this.betBox, ...this.cards, this.handLabel, this.badge, this.thinking, this.caption, this.bubble, this.stickerLayer);
+    this.handLabel.mask = this.handMask;
+    this.handMask.rect(-400, -60, 800, 120).fill(0xffffff);
+    this.handMask.position.copyFrom(this.handLabel.position);
+    this.front.addChild(this.flames, this.plate, this.tag, this.betBox, ...this.cards, this.handLabel, this.badge, this.thinking, this.caption, this.bubble, this.stickerLayer, this.handMask);
   }
 
   /** Chips leave from (and arrive at) the name plate. */
@@ -168,6 +182,10 @@ export class Seat extends Container {
 
   setUnit(bb: number) {
     this.unit = bb;
+  }
+
+  poseTexture(pose: Pose): Texture {
+    return this.poses[pose] ?? this.poses.idle;
   }
 
   setPose(pose: Pose) {
@@ -186,8 +204,58 @@ export class Seat extends Container {
     // breathing
     const k = this.spot.height / this.figure.texture.height;
     this.figure.scale.set(k, k * (1 + Math.sin(t / 900 + this.seat) * 0.008));
-    if (this.active) this.spotlight.alpha = 0.7 + 0.2 * Math.sin(t / 260);
+    if (this.active) this.spotlight.alpha = 0.45 + 0.12 * Math.sin(t / 260);
     if (this.thinkStart) this.thinking.text = `思考中 ${((performance.now() - this.thinkStart) / 1000).toFixed(1)}s`;
+    if (this.burning) this.drawFlames(t);
+  }
+
+  /** ALL IN: the name plate burns with a ring of fire until the hand ends. */
+  setBurning(on: boolean) {
+    this.burning = on;
+    this.flames.clear();
+  }
+
+  private drawFlames(t: number) {
+    const pw = (this.isHero ? 210 : 190) + 16, ph = 62 + 14;
+    const { x, y } = this.spot.plate;
+    const g = this.flames.clear();
+    g.position.set(x, y);
+    g.rotation = this.spot.plateTilt;
+    const flick = 0.75 + 0.25 * Math.sin(t / 70 + this.seat) * Math.sin(t / 113);
+    g.roundRect(-pw / 2 - 6, -ph / 2 - 6, pw + 12, ph + 12, 18).stroke({ width: 12, color: 0xff5a2f, alpha: 0.35 * flick });
+    g.roundRect(-pw / 2, -ph / 2, pw, ph, 14).stroke({ width: 5, color: 0xffb347, alpha: 0.9 * flick });
+    // tongues of flame along the top edge
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const fx = -pw / 2 + 10 + (i / (n - 1)) * (pw - 20);
+      const h = 14 + 16 * (0.5 + 0.5 * Math.sin(t / 90 + i * 1.7 + this.seat * 3));
+      g.moveTo(fx - 9, -ph / 2).quadraticCurveTo(fx - 4, -ph / 2 - h * 0.6, fx, -ph / 2 - h).quadraticCurveTo(fx + 4, -ph / 2 - h * 0.6, fx + 9, -ph / 2).closePath();
+    }
+    g.fill({ color: 0xff7a2f, alpha: 0.85 * flick });
+  }
+
+  /** Showdown spotlight: everyone but the player being shown drops into shadow. */
+  dim(on: boolean) {
+    this.dimmed = on;
+    if (this.out) return;
+    this.figure.tint = on ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xffffff;
+  }
+
+  /** 本局主役: the winner stands up in the victory pose (and sits back down). */
+  async standUp(on: boolean) {
+    if (on === this.standing) return;
+    this.standing = on;
+    if (on) {
+      this.setPose('win');
+      this.figure.tint = 0xffffff;
+      await Promise.all([
+        tween(this.avatar, { y: this.spot.base.y - this.spot.height * 0.12 }, 380, ease.outBack),
+        tween(this.avatar.scale, { x: 1.1, y: 1.1 }, 380, ease.outBack),
+      ]);
+    } else {
+      this.restPose();
+      await Promise.all([tween(this.avatar, { y: this.spot.base.y }, 300), tween(this.avatar.scale, { x: 1, y: 1 }, 300)]);
+    }
   }
 
   startThinking() {
@@ -218,7 +286,7 @@ export class Seat extends Container {
     this.active = on;
     if (!on) this.spotlight.alpha = 0;
     if (this.out) return;
-    this.figure.tint = on || this.isHero ? 0xffffff : this.folded ? 0x8f8088 : 0xeee2e0;
+    this.figure.tint = on || this.isHero ? 0xffffff : this.dimmed ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xeee2e0;
     void tween(this.avatar.scale, { x: on ? 1.03 : 1, y: on ? 1.03 : 1 }, 250);
   }
 
@@ -268,6 +336,10 @@ export class Seat extends Container {
     this.setActive(false);
     this.folded = false;
     this.allIn = false;
+    this.setBurning(false);
+    this.dimmed = false;
+    this.standing = false;
+    this.avatar.scale.set(1);
     this.avatar.y = this.spot.base.y;
     this.stopThinking();
     if (this.expression !== Expression.Angry) this.setExpression(Expression.Calm);
@@ -314,12 +386,11 @@ export class Seat extends Container {
       const c = this.cards[i];
       c.visible = true;
       c.alpha = 1;
-      if (showdown && !this.isHero) {
-        const k = Math.max(1.5, 1.9 * this.spot.cardScale);
-        void tween(c.scale, { x: k, y: k }, 260, ease.outBack);
-        void tween(c, { y: this.spot.cards.y - 30 }, 260);
-      }
-      if (c.code !== codes[i] || !c.faceUp) await c.flipTo(codes[i], 240);
+      // At showdown opponents' cards lift off the felt and turn to face you, much bigger.
+      const lift = showdown && !this.isHero;
+      if (lift) void tween(c, { y: this.spot.cards.y - 40, x: this.spot.cards.x + (i - 0.5) * OPP_CARD.w * 1.25 }, 260);
+      if (c.code !== codes[i] || !c.faceUp) await c.flipTo(codes[i], 240, true, lift ? { x: 2.1, y: 2.1 } : undefined);
+      else if (lift) await tween(c.scale, { x: 2.1, y: 2.1 }, 240, ease.outBack);
     }
   }
 
@@ -327,8 +398,25 @@ export class Seat extends Container {
     for (const c of this.cards) c.highlight(!!best && !!c.code && best.includes(c.code));
   }
 
-  showHand(text: string | null) {
+  /** The hand's name under the cards; `brush` writes it in calligraphy, stroke by stroke. */
+  showHand(text: string | null, brush = false) {
     this.handLabel.text = text ?? '';
+    this.handLabel.style.fontFamily = brush ? FONT_BRUSH : FONT_DISPLAY;
+    this.handLabel.style.fontSize = brush ? (this.isHero ? 52 : 40) : this.isHero ? 34 : 26;
+    if (!brush || !text) {
+      this.handMask.clear().rect(-400, -60, 800, 120).fill(0xffffff);
+      this.handMask.pivot.x = 0;
+      this.handMask.position.copyFrom(this.handLabel.position);
+      this.handMask.scale.x = 1;
+      return;
+    }
+    // wipe in from the left like a brush stroke
+    const w = this.handLabel.width;
+    this.handMask.clear().rect(-w / 2 - 10, -60, w + 20, 120).fill(0xffffff);
+    this.handMask.pivot.x = -w / 2 - 10;
+    this.handMask.x = this.handLabel.x - w / 2 - 10;
+    this.handMask.scale.x = 0;
+    void tween(this.handMask.scale, { x: 1 }, 420, ease.inOutCubic);
   }
 
   showEquity(pct: number | null) {

@@ -1,0 +1,857 @@
+// The big presentation moments of docs/08 §4: M5 ALL IN, M6 VS with equity bars,
+// M7 slow river, M8 showdown open, M9 big hands (+ cooler), M13 本局主役.
+//
+// Every moment can be skipped (tap the table or press Space: the rest plays
+// instantly), and the second time a kind of moment plays its holds are shorter.
+// Moments are only triggered by public events, so they never give anything away.
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { sfx } from '../audio/sfx';
+import type { TableStage } from '../stage/TableStage';
+import { CardSprite } from '../table/CardSprite';
+import { BOARD_X, BOARD_Y, FONT, FONT_BRUSH, FONT_NUM, POT_POS, type Point, fmt } from '../table/layout';
+import { animate, ease, timing, tween, wait } from '../tween';
+import type { Camera } from './camera';
+import { stamp } from './kinetic';
+import type { Particles } from './particles';
+import type { Post } from './post';
+
+export interface MomentDeps {
+  stage: TableStage;
+  camera: Camera;
+  post: Post;
+  particles: Particles;
+  /** Full-screen layer outside the camera. */
+  screen: Container;
+}
+
+export interface Equity {
+  seat: number;
+  pct: number;
+}
+
+/** How often each kind of moment has played this session (the first is the full cut). */
+const played = new Map<string, number>();
+
+const CARD_W = 150;
+const CARD_H = 210;
+
+export class Moments {
+  private skipped = false;
+  private instant = false;
+
+  constructor(private d: MomentDeps) {}
+
+  /** Spectating straight to the results: leave everything instant from now on. */
+  forceInstant() {
+    this.instant = true;
+  }
+
+  // ---------------- plumbing ----------------
+
+  /** Runs a moment; k scales its holds (1 the first time, shorter afterwards). */
+  private async run(kind: string, body: (k: number) => Promise<void>, canSkip = true) {
+    const n = played.get(kind) ?? 0;
+    played.set(kind, n + 1);
+    const before = timing.scale;
+    this.skipped = false;
+    const skip = () => {
+      if (!canSkip || this.skipped) return;
+      this.skipped = true;
+      timing.scale = 0;
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest?.('button, input, .modal')) skip();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === ' ' || e.key === 'Escape') skip();
+    };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    try {
+      await body(n === 0 ? 1 : 0.6);
+    } finally {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+      if (this.skipped && !this.instant) timing.scale = before;
+      this.skipped = false;
+    }
+  }
+
+  /** A pause that ends early when the moment is skipped. */
+  private async hold(ms: number) {
+    const end = performance.now() + ms * timing.scale;
+    while (performance.now() < end && timing.scale > 0) await new Promise((r) => setTimeout(r, 25));
+  }
+
+  private layer() {
+    const c = new Container();
+    this.d.screen.addChild(c);
+    return c;
+  }
+
+  /** World (table) point → screen-layer point, wherever the camera is. */
+  private toScreen(p: Point): Point {
+    return this.d.screen.toLocal(this.d.stage.toGlobal(p));
+  }
+
+  /** Screen-layer point → world point (particles live in the world). */
+  private toWorld(p: Point): Point {
+    return this.d.stage.toLocal(this.d.screen.toGlobal(p));
+  }
+
+  private shade(alpha: number, color = 0x1a0608) {
+    const g = new Graphics().rect(-40, -40, 2000, 1160).fill(color);
+    g.alpha = 0;
+    void tween(g, { alpha }, 160);
+    return g;
+  }
+
+  /** A copy of a card on the screen layer, starting where `from` is on the table. */
+  private cloneCard(code: string, from: CardSprite | undefined, layer: Container) {
+    const c = new CardSprite(CARD_W, CARD_H);
+    c.set(code);
+    if (from) {
+      const p = this.d.screen.toLocal(from.getGlobalPosition());
+      c.position.set(p.x, p.y);
+      const k = (from.w * Math.abs(from.worldTransform.a)) / (CARD_W * Math.abs(this.d.screen.worldTransform.a));
+      c.scale.set(k);
+      c.rotation = from.rotation;
+    } else {
+      c.position.set(960, -200);
+      c.scale.set(0.6);
+    }
+    layer.addChild(c);
+    return c;
+  }
+
+  private bigWord(text: string, size: number, fill = 0xfff7f2, stroke = 0x5b2324, font = FONT_BRUSH) {
+    const t = new Text({
+      text,
+      style: {
+        fontFamily: font, fontSize: size, fill, stroke: { color: stroke, width: Math.round(size / 9) }, letterSpacing: 6,
+        dropShadow: { color: 0x300b0b, alpha: 0.55, distance: 8, angle: Math.PI / 2, blur: 0 },
+      },
+    });
+    t.anchor.set(0.5);
+    return t;
+  }
+
+  /** Impact frame: flash, ripple, shake and a low hit, all at once. */
+  private impact(at: Point, strength = 1) {
+    void this.d.post.flash(0.55 * strength, 240);
+    void this.d.post.impact(at.x, at.y, 600);
+    this.d.camera.shake(14 * strength, 360);
+    sfx.play('impact', strength);
+  }
+
+  /** A word stamped on the screen with a flash; the whole of "simple" mode's big moments. */
+  quick(text: string, color = 0xfff7f2) {
+    return this.run(`quick:${text}`, async (k) => {
+      void this.d.post.flash(0.45, 200);
+      this.d.camera.shake(8, 250);
+      sfx.play('impact', 0.6);
+      await stamp(this.d.screen, text, 960, 470, { font: FONT_BRUSH, size: 130, color, hold: 380 * k });
+    });
+  }
+
+  // ---------------- M5 ALL IN ----------------
+
+  allIn(seat: number, line: string) {
+    return this.run('allin', async (k) => {
+      const s = this.d.stage.seats[seat];
+      const c = s.char;
+      const root = this.layer();
+      try {
+        const head = this.toScreen(s.head);
+        const shade = this.shade(0.55);
+        // speed lines radiating from her
+        const lines = new Graphics();
+        for (let i = 0; i < 48; i++) {
+          const a = (i / 48) * Math.PI * 2 + Math.random() * 0.08;
+          const w = 0.01 + Math.random() * 0.018;
+          const r0 = 150 + Math.random() * 140;
+          lines.poly([Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a - w) * 2600, Math.sin(a - w) * 2600, Math.cos(a + w) * 2600, Math.sin(a + w) * 2600]);
+        }
+        lines.fill({ color: 0xffffff, alpha: 0.5 });
+        lines.position.set(head.x, head.y);
+        lines.alpha = 0;
+        root.addChild(shade, lines);
+        void tween(lines, { alpha: 1 }, 140);
+        void animate(1300, (p) => {
+          lines.rotation = p * 0.06;
+          lines.scale.set(1 + p * 0.2);
+        }, ease.linear);
+        sfx.play('riser', 0.6);
+        await wait(140);
+
+        // the band with her portrait and line
+        const band = new Container();
+        const poly = [-120, 360, 2040, 250, 2040, 690, -120, 800];
+        const g = new Graphics()
+          .poly(poly).fill(c.color)
+          .poly([-120, 384, 2040, 274, 2040, 286, -120, 396]).fill({ color: 0xffffff, alpha: 0.75 })
+          .poly([-120, 772, 2040, 662, 2040, 674, -120, 784]).fill({ color: 0xffffff, alpha: 0.75 });
+        for (let i = 0; i < 14; i++) g.poly([i * 160 - 40, 800, i * 160 + 40, 800, i * 160 + 150, 250, i * 160 + 70, 250]).fill({ color: 0x000000, alpha: 0.06 });
+        const mask = new Graphics().poly(poly).fill(0xffffff);
+        const portrait = new Sprite(s.poseTexture('angry'));
+        portrait.anchor.set(0.5, 0.39);
+        portrait.scale.set(1.05 * (800 / portrait.texture.height));
+        portrait.position.set(470, 520);
+        portrait.mask = mask;
+        const say = new Text({ text: `${c.name}「${line}」`, style: { fontFamily: FONT, fontSize: 40, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x300b0b, width: 7 } } });
+        say.position.set(900, 650);
+        say.rotation = -0.05;
+        band.addChild(g, portrait, mask, say);
+        band.x = -2200;
+        root.addChild(band);
+        sfx.play('whoosh', 0.8);
+        await tween(band, { x: 0 }, 230, ease.outCubic);
+
+        // "ALL IN" slams in from off screen
+        const title = this.bigWord('ALL IN', 200, 0xffffff, 0x300b0b, FONT_NUM);
+        title.skew.x = -0.22;
+        title.position.set(2700, 470);
+        root.addChild(title);
+        await tween(title, { x: 1300 }, 170, ease.inCubic);
+        this.impact({ x: 1300, y: 470 }, 0.9);
+        await this.hold(560 * k);
+
+        // out
+        await Promise.all([
+          tween(band, { x: 2200 }, 210, ease.inCubic),
+          tween(title.scale, { x: 1.5, y: 1.5 }, 210),
+          tween(title, { alpha: 0 }, 210),
+          tween(shade, { alpha: 0 }, 220),
+          tween(lines, { alpha: 0 }, 160),
+        ]);
+      } finally {
+        root.destroy({ children: true });
+      }
+    });
+  }
+
+  // ---------------- M6 VS ----------------
+
+  /** The face-off when the all-in is called: portraits slam in, lightning, "VS", then
+   *  everyone's cards flip at once and the equity bars come up. */
+  async versus(entries: { seat: number; cards: string[] }[], equity: Equity[], full: boolean): Promise<EquityBars> {
+    const st = this.d.stage;
+    // you on the left when you are in it
+    const order = [...entries].sort((a, b) => (a.seat === 0 ? -1 : b.seat === 0 ? 1 : a.seat - b.seat));
+    if (full) await this.run(order.length === 2 ? 'vs' : 'melee', (k) => (order.length === 2 ? this.vsDuel(order[0].seat, order[1].seat, k) : this.vsMelee(order.map((o) => o.seat), k)));
+    else await this.quick(order.length === 2 ? 'VS' : '混战');
+    sfx.play('flip');
+    await Promise.all(order.map((o) => st.seats[o.seat].reveal(o.cards, true)));
+    const bars = new EquityBars(this.d.screen, this.d.particles, order.map((o) => ({ seat: o.seat, name: st.seats[o.seat].char.name, color: st.seats[o.seat].char.color })));
+    bars.set(equity);
+    return bars;
+  }
+
+  private async vsDuel(a: number, b: number, k: number) {
+    const st = this.d.stage;
+    const root = this.layer();
+    try {
+      const shade = this.shade(0.6);
+      root.addChild(shade);
+      const panel = (seat: number, left: boolean) => {
+        const s = st.seats[seat];
+        const c = new Container();
+        const poly = left ? [-80, -40, 1020, -40, 900, 1120, -80, 1120] : [1040, -40, 2000, -40, 2000, 1120, 920, 1120];
+        const g = new Graphics().poly(poly).fill(s.char.color);
+        const shadeG = new Graphics().poly(poly).fill({ color: 0x300b0b, alpha: 0.25 });
+        shadeG.y = 0;
+        const mask = new Graphics().poly(poly).fill(0xffffff);
+        const pic = new Sprite(s.poseTexture('angry'));
+        pic.anchor.set(0.5, 0.39);
+        const sc = 1.35 * (800 / pic.texture.height);
+        pic.scale.set(left ? sc : -sc, sc);
+        pic.position.set(left ? 470 : 1450, 470);
+        pic.mask = mask;
+        const name = this.bigWord(s.char.name, 110);
+        name.position.set(left ? 300 : 1620, 900);
+        name.rotation = -0.06;
+        const style = new Text({ text: s.char.style, style: { fontFamily: FONT, fontSize: 30, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x300b0b, width: 6 } } });
+        style.anchor.set(0.5);
+        style.position.set(left ? 300 : 1620, 990);
+        c.addChild(g, pic, mask, name, style);
+        c.x = left ? -1200 : 1200;
+        return c;
+      };
+      const L = panel(a, true);
+      const R = panel(b, false);
+      root.addChild(L, R);
+      sfx.play('whoosh', 0.9);
+      await Promise.all([tween(L, { x: 0 }, 240, ease.outCubic), tween(R, { x: 0 }, 240, ease.outCubic)]);
+
+      // lightning down the split
+      const bolt = new Graphics();
+      const pts: number[] = [];
+      for (let i = 0; i <= 12; i++) pts.push(1030 - i * 10 + (i % 2 ? 1 : -1) * (20 + Math.random() * 30), -40 + i * 96);
+      const path = (g: Graphics, w: number, color: number, alpha: number) => {
+        g.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+        g.stroke({ width: w, color, alpha, join: 'miter' });
+      };
+      path(bolt, 34, 0xb9a7f0, 0.45);
+      path(bolt, 10, 0xffffff, 1);
+      root.addChild(bolt);
+      sfx.play('thunder');
+      void this.d.post.flash(0.7, 260);
+      this.d.camera.shake(12, 350);
+      for (const al of [0.15, 1, 0.3, 1]) {
+        bolt.alpha = al;
+        await wait(55);
+      }
+
+      // VS
+      const vs = this.bigWord('VS', 280, 0xffd36b, 0x300b0b, FONT_NUM);
+      vs.skew.x = -0.18;
+      vs.position.set(965, 500);
+      vs.scale.set(3);
+      vs.alpha = 0;
+      root.addChild(vs);
+      await Promise.all([tween(vs.scale, { x: 1, y: 1 }, 180, ease.inCubic), tween(vs, { alpha: 1 }, 100)]);
+      this.impact({ x: 960, y: 520 }, 0.8);
+      await this.hold(700 * k);
+
+      await Promise.all([
+        tween(L, { x: -1300 }, 220, ease.inCubic),
+        tween(R, { x: 1300 }, 220, ease.inCubic),
+        tween(vs, { alpha: 0 }, 200),
+        tween(vs.scale, { x: 1.6, y: 1.6 }, 200),
+        tween(bolt, { alpha: 0 }, 150),
+        tween(shade, { alpha: 0 }, 240),
+      ]);
+    } finally {
+      root.destroy({ children: true });
+    }
+  }
+
+  private async vsMelee(seats: number[], k: number) {
+    const st = this.d.stage;
+    const root = this.layer();
+    try {
+      const shade = this.shade(0.65);
+      root.addChild(shade);
+      const n = seats.length;
+      const w = 1920 / n;
+      const slices = seats.map((seat, i) => {
+        const s = st.seats[seat];
+        const c = new Container();
+        const x0 = i * w;
+        const poly = [x0 + 60, -40, x0 + w + 60, -40, x0 + w - 60, 1120, x0 - 60, 1120];
+        const g = new Graphics().poly(poly).fill(s.char.color).stroke({ width: 10, color: 0xffffff });
+        const mask = new Graphics().poly(poly).fill(0xffffff);
+        const pic = new Sprite(s.poseTexture('angry'));
+        pic.anchor.set(0.5, 0.39);
+        pic.scale.set(1.15 * (800 / pic.texture.height));
+        pic.position.set(x0 + w / 2, 470);
+        pic.mask = mask;
+        const name = this.bigWord(s.char.name, 90);
+        name.position.set(x0 + w / 2, 930);
+        c.addChild(g, pic, mask, name);
+        c.y = i % 2 ? 1200 : -1200;
+        return c;
+      });
+      root.addChild(...slices);
+      sfx.play('whoosh', 0.9);
+      for (const c of slices) {
+        void tween(c, { y: 0 }, 240, ease.outCubic);
+        await wait(70);
+      }
+      await wait(200);
+      const title = this.bigWord('混战', 230, 0xffd36b);
+      title.position.set(960, 470);
+      const sub = this.bigWord(`${n} 人全下`, 70, 0xffffff, 0x300b0b, FONT_NUM);
+      sub.position.set(960, 640);
+      title.scale.set(3);
+      root.addChild(title, sub);
+      sfx.play('thunder');
+      await tween(title.scale, { x: 1, y: 1 }, 180, ease.inCubic);
+      this.impact({ x: 960, y: 480 }, 0.9);
+      await this.hold(800 * k);
+      await Promise.all([
+        ...slices.map((c, i) => tween(c, { y: i % 2 ? 1300 : -1300 }, 220, ease.inCubic)),
+        tween(title, { alpha: 0 }, 200),
+        tween(sub, { alpha: 0 }, 200),
+        tween(shade, { alpha: 0 }, 240),
+      ]);
+    } finally {
+      root.destroy({ children: true });
+    }
+  }
+
+  // ---------------- M7 slow river ----------------
+
+  slowRiver(code: string) {
+    return this.run('river', async (k) => {
+      const { camera, post, stage, particles } = this.d;
+      void camera.push(960, BOARD_Y, 1.25, 520, 0.65);
+      void post.tighten(1, 400);
+      sfx.play('riser', 0.5);
+      // the heartbeat speeds up while the card peels open
+      const beats = (async () => {
+        for (const gap of [0, 470, 400, 330, 270]) {
+          await wait(gap);
+          if (timing.scale === 0) return;
+          sfx.play('heartbeat', 1);
+          void post.tighten(0.55, 90).then(() => post.tighten(1, 170));
+        }
+      })();
+      await stage.squeezeRiver(code, 1500);
+      const at = { x: BOARD_X[4], y: BOARD_Y };
+      this.impact(this.toScreen(at), 1.1);
+      particles.sparks(at.x, at.y, 30);
+      await this.hold(380 * k);
+      await beats;
+      await Promise.all([camera.reset(420), post.tighten(0, 400)]);
+    });
+  }
+
+  // ---------------- M8 showdown ----------------
+
+  /** "胜负揭晓" stamped across the table before the hands are turned over. */
+  showdownOpen() {
+    return this.run('showdown', async (k) => {
+      sfx.play('thud', 0.8);
+      void stamp(this.d.screen, '胜负揭晓', 960, 430, { font: FONT_BRUSH, size: 130, color: 0xfff7f2, stroke: 0x5b2324, hold: 260 * k, rotate: -0.06 });
+      await this.hold(560);
+    });
+  }
+
+  // ---------------- M9 big hands ----------------
+
+  /** Two monsters collide: both hands fly to the middle and smash into each other. */
+  cooler(a: { seat: number; cards: string[] }, b: { seat: number; cards: string[] }) {
+    return this.run('cooler', async (k) => {
+      const st = this.d.stage;
+      const root = this.layer();
+      try {
+        const shade = this.shade(0.5);
+        root.addChild(shade);
+        const pair = (h: { seat: number; cards: string[] }, side: -1 | 1) =>
+          h.cards.map((code, i) => {
+            const c = this.cloneCard(code, st.cardSprites([code], h.seat)[0], root);
+            return { c, x: 960 + side * (230 - i * 80), r: side * 0.12 };
+          });
+        const cards = [...pair(a, -1), ...pair(b, 1)];
+        sfx.play('whoosh');
+        await Promise.all(cards.map(({ c, x, r }) =>
+          Promise.all([tween(c.position, { x, y: 480 }, 300, ease.outCubic), tween(c.scale, { x: 1, y: 1 }, 300), tween(c, { rotation: r }, 300)])));
+        await wait(120);
+        // charge and collide
+        await Promise.all(cards.map(({ c, x }) => tween(c.position, { x: x + (x < 960 ? 60 : -60) }, 110, ease.inCubic)));
+        const hit = this.toWorld({ x: 960, y: 480 });
+        this.d.particles.sparks(hit.x, hit.y, 50);
+        this.impact({ x: 960, y: 480 }, 1);
+        await Promise.all(cards.map(({ c, x }) => tween(c.position, { x }, 200, ease.outBack)));
+        await stamp(root, '冤家牌！', 960, 760, { font: FONT_BRUSH, size: 130, color: 0xffd36b, hold: 380 * k });
+        await Promise.all([...cards.map(({ c }) => tween(c, { alpha: 0 }, 200)), tween(shade, { alpha: 0 }, 220)]);
+      } finally {
+        root.destroy({ children: true });
+      }
+    });
+  }
+
+  /** Full house and up, by rarity: 葫芦 1 s, 四条 1.8 s, 同花顺 2.4 s, 皇家同花顺 4 s. */
+  bigHand(seat: number, category: number, royal: boolean, best: string[], extras: string[] = []) {
+    if (royal) return this.run('royal', (k) => this.royal(best, extras, k), (played.get('royal') ?? 0) > 0);
+    if (category >= 8) return this.run('straightFlush', (k) => this.straightFlush(seat, best, extras, k));
+    if (category === 7) return this.run('quads', (k) => this.quads(seat, best, extras, k));
+    return this.run('fullHouse', (k) => this.fullHouse(seat, best, extras, k));
+  }
+
+  private extrasText(root: Container, extras: string[], y: number, x = 960) {
+    if (!extras.length) return;
+    const t = new Text({ text: extras.map((e) => `＋${e}`).join('  '), style: { fontFamily: FONT, fontSize: 30, fontWeight: '900', fill: 0xffd36b, stroke: { color: 0x300b0b, width: 6 } } });
+    t.anchor.set(0.5);
+    t.position.set(x, y);
+    root.addChild(t);
+  }
+
+  private async fullHouse(seat: number, best: string[], extras: string[], k: number) {
+    const st = this.d.stage;
+    const sprites = st.cardSprites(best, seat);
+    sfx.play('chime', 0.8);
+    sprites.forEach((c, i) => {
+      void wait(i * 70).then(() => c.shine(0xffd36b, 420));
+      const p = st.toLocal(c.getGlobalPosition());
+      void wait(i * 70).then(() => this.d.particles.sparkle(p.x, p.y, 8, 70));
+    });
+    const root = this.layer();
+    try {
+      this.extrasText(root, extras, 690);
+      await stamp(root, '葫芦', 960, 600, { font: FONT_BRUSH, size: 150, color: 0xffd36b, hold: 420 * k });
+    } finally {
+      root.destroy({ children: true });
+    }
+  }
+
+  private async quads(seat: number, best: string[], extras: string[], k: number) {
+    const st = this.d.stage;
+    const counts = new Map<string, number>();
+    best.forEach((c) => counts.set(c[0], (counts.get(c[0]) ?? 0) + 1));
+    const rank = [...counts.entries()].find(([, n]) => n === 4)?.[0];
+    const four = best.filter((c) => c[0] === rank);
+    const root = this.layer();
+    try {
+      // freeze frame
+      void this.d.post.flash(0.9, 180);
+      sfx.play('impact', 0.7);
+      await wait(150);
+      const shade = this.shade(0.7);
+      root.addChild(shade);
+      const cards = four.map((code) => this.cloneCard(code, st.cardSprites([code], seat)[0], root));
+      sfx.play('whoosh');
+      await Promise.all(cards.map((c, i) =>
+        Promise.all([
+          tween(c.position, { x: 960 + (i - 1.5) * 185, y: 450 }, 360, ease.outCubic),
+          tween(c.scale, { x: 1.05, y: 1.05 }, 360, ease.outBack),
+          tween(c, { rotation: (i - 1.5) * 0.04 }, 360),
+        ])));
+      cards.forEach((c, i) => void wait(i * 60).then(() => c.shine(0xffd36b, 380)));
+      const word = this.bigWord('四条', 170, 0xffd36b);
+      word.position.set(960, 740);
+      word.scale.set(2.6);
+      word.alpha = 0;
+      root.addChild(word);
+      this.extrasText(root, extras, 850);
+      await Promise.all([tween(word.scale, { x: 1, y: 1 }, 200, ease.inCubic), tween(word, { alpha: 1 }, 120)]);
+      this.impact({ x: 960, y: 600 }, 1);
+      const w = this.toWorld({ x: 960, y: 740 });
+      this.d.particles.sparks(w.x, w.y, 40);
+      await this.hold(900 * k);
+      await Promise.all([tween(root, { alpha: 0 }, 260)]);
+    } finally {
+      root.destroy({ children: true });
+    }
+  }
+
+  private async straightFlush(seat: number, best: string[], extras: string[], k: number) {
+    const st = this.d.stage;
+    const root = this.layer();
+    try {
+      const shade = this.shade(0.78);
+      root.addChild(shade);
+      // in rank order (the wheel puts its ace first)
+      const R = '23456789TJQKA';
+      const wheel = best.some((c) => c[0] === 'A') && best.some((c) => c[0] === '2');
+      const v = (c: string) => (wheel && c[0] === 'A' ? -1 : R.indexOf(c[0]));
+      const sorted = [...best].sort((a, b) => v(a) - v(b));
+      const cards = sorted.map((code) => this.cloneCard(code, st.cardSprites([code], seat)[0], root));
+      sfx.play('riser', 0.6);
+      // an arc in the air
+      await Promise.all(cards.map((c, i) => {
+        const a = (i - 2) * 0.2;
+        return Promise.all([
+          tween(c.position, { x: 960 + Math.sin(a) * 760, y: 1240 - Math.cos(a) * 820 }, 420 + i * 40, ease.outBack),
+          tween(c, { rotation: a }, 420 + i * 40),
+          tween(c.scale, { x: 1, y: 1 }, 420),
+        ]);
+      }));
+      // a rainbow sweep, card by card
+      const rainbow = [0xff6b6b, 0xffb347, 0xffe66d, 0x6bd6a0, 0x7aa8ff];
+      for (let i = 0; i < cards.length; i++) {
+        void cards[i].shine(rainbow[i], 360);
+        sfx.play('chime', 0.35);
+        await wait(90);
+      }
+      const word = this.bigWord('同花顺', 170, 0xffffff, 0x4b3a8f);
+      word.position.set(960, 790);
+      word.scale.set(2.6);
+      word.alpha = 0;
+      root.addChild(word);
+      this.extrasText(root, extras, 900);
+      await Promise.all([tween(word.scale, { x: 1, y: 1 }, 200, ease.inCubic), tween(word, { alpha: 1 }, 120)]);
+      this.impact({ x: 960, y: 700 }, 1);
+      sfx.play('cheer', 0.8);
+      const colors = [0xffd36b, 0xe04fb0, 0x52c0cf, 0xf69375, 0xb9a7f0];
+      for (let i = 0; i < 5; i++) {
+        const p = this.toWorld({ x: 260 + Math.random() * 1400, y: 120 + Math.random() * 260 });
+        void wait(i * 160).then(() => this.d.particles.firework(p.x, p.y, colors[i]));
+      }
+      await this.hold(1200 * k);
+      await tween(root, { alpha: 0 }, 280);
+    } finally {
+      root.destroy({ children: true });
+    }
+  }
+
+  private async royal(best: string[], extras: string[], k: number) {
+    const root = this.layer();
+    try {
+      const shade = this.shade(0.92, 0x07040a);
+      const beam = new Graphics().poly([880, -40, 1040, -40, 1340, 1120, 580, 1120]).fill({ color: 0xfff1d0, alpha: 0.16 });
+      beam.alpha = 0;
+      root.addChild(shade, beam);
+      sfx.play('riser', 0.5);
+      await wait(300);
+      await tween(beam, { alpha: 1 }, 400);
+      // five cards fall from the sky, a bell each
+      const R = '23456789TJQKA';
+      const order = [...best].sort((a, b) => R.indexOf(a[0]) - R.indexOf(b[0]));
+      const cards: CardSprite[] = [];
+      for (let i = 0; i < order.length; i++) {
+        const c = this.cloneCard(order[i], undefined, root);
+        c.position.set(960 + (i - 2) * 180, -220);
+        c.scale.set(1.05);
+        c.rotation = (Math.random() - 0.5) * 0.6;
+        cards.push(c);
+        sfx.play('bell', 0.7);
+        await Promise.all([tween(c.position, { y: 430 }, 380, ease.outBack), tween(c, { rotation: 0 }, 380)]);
+        void c.shine(0xffd36b, 380);
+        await wait(140 * k + 60);
+      }
+      // the burst
+      void this.d.post.flash(0.85, 400);
+      this.d.camera.shake(16, 500);
+      sfx.play('impact', 1);
+      sfx.play('cheer', 1);
+      const top = this.toWorld({ x: 960, y: -40 });
+      this.d.particles.confetti(180, top.x, top.y);
+      const mid = this.toWorld({ x: 960, y: 430 });
+      for (let i = 0; i < 4; i++) void wait(i * 140).then(() => this.d.particles.firework(mid.x + (i - 1.5) * 380, mid.y - 200, i % 2 ? 0xffd36b : 0xe04fb0, 44));
+      const en = this.bigWord('ROYAL FLUSH', 120, 0xffd36b, 0x5b2324, FONT_NUM);
+      en.position.set(960, 700);
+      const zh = this.bigWord('皇家同花顺', 120, 0xfff7f2);
+      zh.position.set(960, 850);
+      for (const t of [en, zh]) {
+        t.scale.set(2.4);
+        t.alpha = 0;
+      }
+      root.addChild(en, zh);
+      this.extrasText(root, extras, 960);
+      await Promise.all([tween(en.scale, { x: 1, y: 1 }, 220, ease.inCubic), tween(en, { alpha: 1 }, 120)]);
+      await Promise.all([tween(zh.scale, { x: 1, y: 1 }, 220, ease.inCubic), tween(zh, { alpha: 1 }, 120)]);
+      await this.hold(1500 * k);
+      await tween(root, { alpha: 0 }, 350);
+    } finally {
+      root.destroy({ children: true });
+    }
+  }
+
+  // ---------------- M13 本局主役 ----------------
+
+  mvp(seat: number, amount: number, extras: string[] = []) {
+    return this.run('mvp', async (k) => {
+      const { stage, camera, post, particles } = this.d;
+      const s = stage.seats[seat];
+      const root = this.layer();
+      const sash = new Container();
+      try {
+        void camera.push(s.head.x, s.head.y + s.spot.height * 0.2, 1.12, 520, 0.35);
+        // the ceiling lights come on, row by row
+        const lights = Array.from({ length: 7 }, (_, i) => {
+          const l = new Sprite(particles.glowTex);
+          l.anchor.set(0.5);
+          l.position.set(260 + i * 233, 30);
+          l.scale.set(4.2, 2.6);
+          l.blendMode = 'add';
+          l.tint = 0xffe2b8;
+          l.alpha = 0;
+          root.addChild(l);
+          return l;
+        });
+        lights.forEach((l, i) => void wait(i * 60).then(() => {
+          sfx.play('tick', 0.8);
+          return tween(l, { alpha: 0.9 }, 140);
+        }));
+        void post.flash(0.3, 300);
+        // everyone else reacts
+        stage.seats.forEach((o) => {
+          if (o.seat !== seat && !o.out && !o.isHero) o.setPose(Math.random() < 0.5 ? 'shock' : 'cry');
+        });
+        await s.standUp(true);
+
+        // the sash
+        const sc = s.spot.height / 600;
+        const ribbon = new Graphics()
+          .poly([-250, -36, 250, -36, 276, 0, 250, 36, -250, 36, -276, 0]).fill(0xd6334a).stroke({ width: 5, color: 0xffffff })
+          .rect(-250, -26, 500, 4).fill(0xffd36b).rect(-250, 22, 500, 4).fill(0xffd36b);
+        const word = new Text({ text: '本局主役', style: { fontFamily: FONT_BRUSH, fontSize: 58, fill: 0xffe08a, stroke: { color: 0x5b2324, width: 6 }, letterSpacing: 10 } });
+        word.anchor.set(0.5);
+        const reveal = new Graphics().rect(-290, -50, 580, 100).fill(0xffffff);
+        reveal.pivot.x = -290;
+        reveal.x = -290;
+        reveal.scale.x = 0;
+        sash.addChild(ribbon, word, reveal);
+        sash.mask = reveal;
+        // across her chest once she has stood up
+        sash.position.set(s.head.x, s.head.y + s.spot.height * 0.1);
+        sash.rotation = -0.32;
+        sash.scale.set(sc);
+        stage.fxLayer.addChild(sash);
+        sfx.play('chime', 1);
+        await tween(reveal.scale, { x: 1 }, 320, ease.inOutCubic);
+
+        // chips burst off the table and rain down
+        particles.chipBurst(POT_POS.x, POT_POS.y, 60, 1.3);
+        const top = this.toWorld({ x: 960, y: -60 });
+        particles.confetti(90, top.x, top.y);
+        particles.chipRain(1300, 45);
+        sfx.play('cheer', 0.9);
+        const head = this.toScreen(s.head);
+        const gain = this.bigWord(`+${fmt(amount)}`, 76, 0xffd36b, 0x5b2324, FONT_NUM);
+        const scale = this.d.screen.toLocal(stage.toGlobal({ x: 0, y: s.spot.height })).y - this.d.screen.toLocal(stage.toGlobal({ x: 0, y: 0 })).y;
+        gain.position.set(Math.min(1700, Math.max(220, head.x)), Math.max(150, head.y - scale * 0.5));
+        gain.alpha = 0;
+        root.addChild(gain);
+        void tween(gain, { alpha: 1, y: gain.y - 30 }, 300);
+        if (extras.length) this.extrasText(root, extras, gain.y + 40, gain.x);
+        await this.hold(1400 * k);
+
+        await Promise.all([
+          tween(root, { alpha: 0 }, 300),
+          tween(sash, { alpha: 0 }, 300),
+          camera.reset(450),
+          s.standUp(false),
+        ]);
+        stage.seats.forEach((o) => o.restPose());
+      } finally {
+        root.destroy({ children: true });
+        sash.destroy({ children: true });
+      }
+    });
+  }
+}
+
+// ---------------- equity bars ----------------
+
+interface BarRow {
+  seat: number;
+  color: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  dir: 1 | -1;
+  frame: Graphics;
+  dmg: Graphics;
+  fill: Graphics;
+  flash: Graphics;
+  pctText: Text;
+  box: Container;
+  shown: number;
+  dmgShown: number;
+}
+
+/** Fighting-game style equity bars for an all-in face-off (two duelists, or a stack for a melee). */
+export class EquityBars {
+  readonly root = new Container();
+  private rows: BarRow[] = [];
+  private leader = -1;
+
+  constructor(screen: Container, private particles: Particles, entries: { seat: number; name: string; color: number }[]) {
+    screen.addChild(this.root);
+    const duel = entries.length === 2;
+    entries.forEach((e, i) => {
+      const box = new Container();
+      const left = !duel || i === 0;
+      const x = duel ? (left ? 250 : 1030) : 760;
+      const y = duel ? 172 : 150 + i * 50;
+      const w = duel ? 640 : 520;
+      const h = duel ? 36 : 28;
+      const name = new Text({ text: e.name, style: { fontFamily: FONT_BRUSH, fontSize: duel ? 44 : 32, fill: 0xffffff, stroke: { color: 0x300b0b, width: 6 } } });
+      const pctText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: duel ? 30 : 24, fill: 0xffd36b, stroke: { color: 0x300b0b, width: 5 } } });
+      if (duel) {
+        name.anchor.set(left ? 0 : 1, 1);
+        name.position.set(left ? x : x + w, y - 4);
+        pctText.anchor.set(left ? 1 : 0, 1);
+        pctText.position.set(left ? x + w : x, y - 6);
+      } else {
+        name.anchor.set(1, 0.5);
+        name.position.set(x - 14, y + h / 2);
+        pctText.anchor.set(0, 0.5);
+        pctText.position.set(x + w + 14, y + h / 2);
+      }
+      const frame = new Graphics();
+      const dmg = new Graphics();
+      const fill = new Graphics();
+      const flash = new Graphics();
+      flash.alpha = 0;
+      box.addChild(frame, dmg, fill, flash, name, pctText);
+      this.root.addChild(box);
+      const row: BarRow = { seat: e.seat, color: e.color, x, y, w, h, dir: duel && !left ? -1 : 1, frame, dmg, fill, flash, pctText, box, shown: 0, dmgShown: 0 };
+      this.drawSeg(frame, row, 1, 0x300b0b, 0.75, true);
+      this.drawSeg(flash, row, 1, 0xff3b4a, 0.9);
+      this.rows.push(row);
+    });
+    if (duel) {
+      const vs = new Text({ text: 'VS', style: { fontFamily: FONT_NUM, fontSize: 40, fill: 0xffd36b, stroke: { color: 0x300b0b, width: 7 } } });
+      vs.anchor.set(0.5);
+      vs.position.set(960, 190);
+      this.root.addChild(vs);
+    }
+    this.root.alpha = 0;
+    void tween(this.root, { alpha: 1 }, 250);
+  }
+
+  /** A slanted segment covering fraction f of the bar, from its anchored end. */
+  private drawSeg(g: Graphics, r: BarRow, f: number, color: number, alpha = 1, border = false) {
+    g.clear();
+    const len = Math.max(0, Math.min(1, f)) * r.w;
+    if (len <= 0 && !border) return;
+    const s = 12; // slant
+    const x0 = r.dir === 1 ? r.x : r.x + r.w - len;
+    const x1 = x0 + len;
+    g.poly([x0 + s, r.y, x1 + s, r.y, x1, r.y + r.h, x0, r.y + r.h]).fill({ color, alpha });
+    if (border) g.poly([r.x + s, r.y, r.x + r.w + s, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h]).stroke({ width: 4, color: 0xffffff });
+    else g.rect(Math.min(x0, x1) + s * 0.6, r.y + 4, Math.max(0, len - s * 0.4), 5).fill({ color: 0xffffff, alpha: 0.35 * alpha });
+  }
+
+  private paint(r: BarRow) {
+    this.drawSeg(r.dmg, r, r.dmgShown, 0xfff7f2);
+    this.drawSeg(r.fill, r, r.shown, r.color);
+    r.pctText.text = `${(r.shown * 100).toFixed(r.shown >= 0.9995 || r.shown < 0.0005 ? 0 : 1)}%`;
+  }
+
+  /** New equities: losses drop at once and the white "damage" drains after; gains fill up. */
+  set(equity: Equity[]) {
+    const pct = (seat: number) => (equity.find((q) => q.seat === seat)?.pct ?? 0) / 100;
+    let leader = -1;
+    let top = -1;
+    for (const r of this.rows) {
+      const to = pct(r.seat);
+      if (to > top) {
+        top = to;
+        leader = r.seat;
+      }
+      const from = r.shown;
+      if (to < from) {
+        r.shown = to;
+        r.dmgShown = Math.max(r.dmgShown, from);
+        this.paint(r);
+        sfx.play('thud', 0.5);
+        const start = r.dmgShown;
+        void wait(320).then(() => animate(380, (p) => {
+          r.dmgShown = start + (to - start) * p;
+          this.paint(r);
+        }));
+        void animate(260, (p) => (r.box.x = Math.sin(p * Math.PI * 6) * 8 * (1 - p)), ease.linear);
+      } else {
+        void animate(500, (p) => {
+          r.shown = from + (to - from) * p;
+          r.dmgShown = r.shown;
+          this.paint(r);
+        });
+      }
+    }
+    // overtaken: the old leader's bar flashes red
+    if (this.leader >= 0 && leader !== this.leader) {
+      const old = this.rows.find((r) => r.seat === this.leader);
+      if (old) {
+        old.flash.alpha = 1;
+        void tween(old.flash, { alpha: 0 }, 650);
+      }
+      const now = this.rows.find((r) => r.seat === leader);
+      if (now) this.particles.sparkle(now.x + now.w / 2, now.y + now.h / 2, 10, now.w * 0.6);
+    }
+    this.leader = leader;
+  }
+
+  async dispose() {
+    await tween(this.root, { alpha: 0 }, 300);
+    this.root.destroy({ children: true });
+  }
+}

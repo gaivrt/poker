@@ -95,13 +95,15 @@ export class CardSprite extends Container {
     this.sweep.visible = false;
   }
 
-  async flipTo(code: string, ms = 260, shine = true) {
-    const sy = this.scale.y;
-    const sx = Math.abs(this.scale.x) || 1;
+  /** Turn over to `code`; `toScale` lets the card grow while it turns (x lands there, y follows). */
+  async flipTo(code: string, ms = 260, shine = true, toScale?: { x: number; y: number }) {
+    const sx = toScale?.x ?? (Math.abs(this.scale.x) || 1);
+    if (toScale) void tween(this.scale, { y: toScale.y }, ms, ease.outBack);
     await tween(this.scale, { x: 0 }, ms / 2, ease.inCubic);
+    const sy = this.scale.y;
     this.set(code);
     this.scale.y = sy;
-    await tween(this.scale, { x: sx }, ms / 2, ease.outCubic);
+    await tween(this.scale, { x: sx }, ms / 2, ease.outBack);
     if (shine) void this.shine();
   }
 

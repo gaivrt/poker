@@ -6,6 +6,7 @@ import { CAST, type Character, HERO, characterFor } from './characters';
 import { Director } from './director';
 import { type Difficulty, type Format, Game, Sticker, loadEngine } from './engine';
 import { Camera } from './fx/camera';
+import { Moments } from './fx/moments';
 import { Particles } from './fx/particles';
 import { Post } from './fx/post';
 import { makeSticker } from './fx/stickers';
@@ -19,8 +20,13 @@ import { timing } from './tween';
 import { Overlay, PLACE_POINTS } from './ui/overlay';
 
 // Fonts come from Google Fonts; don't wait forever if they are blocked.
+// The brush font is split into subsets by character, so ask for the ones the big moments use.
+const BRUSH_TEXT = '胜负揭晓高牌一对两对三条顺子同花葫芦四条同花顺皇家冤家牌本局主役混战到带大和AKQJT98765432';
 await Promise.race([
-  Promise.all(['40px "ZCOOL QingKe HuangYou"', '40px "Dela Gothic One"', '700 40px "Noto Sans SC"'].map((f) => document.fonts.load(f))),
+  Promise.all([
+    ...['40px "ZCOOL QingKe HuangYou"', '40px "Dela Gothic One"', '700 40px "Noto Sans SC"'].map((f) => document.fonts.load(f)),
+    document.fonts.load('40px "Ma Shan Zheng"', BRUSH_TEXT),
+  ]),
   new Promise((r) => setTimeout(r, 2500)),
 ]);
 
@@ -78,6 +84,9 @@ overlay.stickerPreviews = await Promise.all(
 
 // ?speed=0 makes every animation instant (used by automated browser tests).
 const speedOverride = new URLSearchParams(location.search).get('speed');
+// ?debug exposes the clock so a test can fast-forward to the hand it wants to film.
+const debug: Record<string, unknown> | null = new URLSearchParams(location.search).has('debug') ? { timing } : null;
+if (debug) (window as unknown as { __poker: unknown }).__poker = debug;
 function applySettings() {
   timing.scale = speedOverride !== null ? Number(speedOverride) : overlay.settings.fast ? 0.5 : 1;
   sfx.muted = !overlay.settings.sound;
@@ -152,7 +161,9 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
   overlay.loading(false);
   overlay.setInGame(true);
   const g = game;
-  director = new Director(g, stage, overlay, cast, camera, screen, () => {
+  const moments = new Moments({ stage, camera, post, particles, screen });
+  if (debug) Object.assign(debug, { moments, stage }); // lets a test replay any moment (royal flush etc.)
+  director = new Director(g, stage, overlay, cast, moments, () => {
     applySettings();
     const standings = g.standings();
     let rank: { before: number; after: number } | undefined;

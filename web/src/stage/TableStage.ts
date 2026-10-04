@@ -219,7 +219,7 @@ export class TableStage extends Container {
   async revealBoard(cards: string[], dramatic: boolean, big = false) {
     const start = this.board.findIndex((c) => !c.visible);
     const slots = cards.map((_, i) => this.board[start + i]);
-    const targets = slots.map((c) => ({ x: c.x, y: c.y }));
+    const targets = slots.map((_, i) => ({ x: BOARD_X[start + i], y: BOARD_Y }));
     // slide out from the shoe, stacked on the first slot
     slots.forEach((c) => {
       c.set(null);
@@ -256,14 +256,54 @@ export class TableStage extends Container {
     if (big || dramatic) void this.deps.post.tighten(0, 400);
   }
 
+  /** The winning five rise off the felt and glow; the rest of the board sinks into shadow. */
   highlightBoard(best: string[] | undefined) {
-    for (const c of this.board) {
-      if (!c.visible) continue;
+    this.board.forEach((c, i) => {
+      if (!c.visible) return;
       const on = !!best && !!c.code && best.includes(c.code);
       c.highlight(on);
-      c.alpha = best && !on ? 0.5 : 1;
-      if (on) void c.shine(0xffd36b);
-    }
+      c.alpha = best && !on ? 0.45 : 1;
+      void tween(c, { y: BOARD_Y - (on ? 16 : 0) }, 260, ease.outBack);
+      if (on) void wait(i * 60).then(() => c.shine(0xffd36b, 420));
+    });
+  }
+
+  /** M7: the river arrives face down and is squeezed open from the corner, slowly. */
+  async squeezeRiver(code: string, ms = 1600) {
+    const c = this.board[4];
+    c.set(null);
+    c.position.set(SHOE.x, SHOE.y);
+    c.scale.set(0.5, 0.45);
+    c.alpha = 0;
+    c.visible = true;
+    sfx.play('slide', 0.8);
+    await Promise.all([
+      tween(c.position, { x: BOARD_X[4], y: BOARD_Y }, 300, ease.outCubic),
+      tween(c.scale, { x: 1, y: 0.9 }, 300, ease.outCubic),
+      tween(c, { alpha: 1 }, 120),
+    ]);
+    await animate(ms, (p) => {
+      c.peel(code, p * 0.82);
+      c.y = BOARD_Y - 12 * p;
+    }, ease.inCubic);
+    c.set(code);
+    c.y = BOARD_Y;
+    sfx.play('flip');
+    void c.shine(0xffd36b, 420);
+  }
+
+  /** Face-up card sprites (board and hands) showing any of `codes`. */
+  cardSprites(codes: string[], seat = -1): CardSprite[] {
+    const pool = [...this.board, ...(seat >= 0 ? this.seats[seat].cards : this.seats.flatMap((s) => s.cards))];
+    return codes.map((code) => pool.find((c) => c.visible && c.code === code)).filter((c): c is CardSprite => !!c);
+  }
+
+  /** Showdown spotlight on one seat (null: lights back up for everyone). */
+  focusSeat(seat: number | null) {
+    this.seats.forEach((s) => {
+      s.dim(seat !== null && s.seat !== seat && !s.isHero);
+      s.setActive(s.seat === seat);
+    });
   }
 
   // ---------------- M4: bets ----------------

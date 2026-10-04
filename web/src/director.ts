@@ -5,20 +5,23 @@
 // time; bots think on a visible clock and may leak tells while they do; every hand
 // that gets turned face up is written into the "reading notes" next to what that
 // player said and did, so you can learn their habits.
-import type { Container } from 'pixi.js';
 import { sfx } from './audio/sfx';
-import type { Camera } from './fx/camera';
 import { type Character, EXPRESSION_LABEL, STICKER_LABEL, gestureCaption, pick, talkLine } from './characters';
 import { Expression, type Game, type GameEvent, Gesture, type SignalKindName, Sticker, type StrengthName, type TableState } from './engine';
 import type { Face } from './fx/stickers';
-import { allInCutIn, bigHand } from './fx/effects';
+import { type EquityBars, type Moments } from './fx/moments';
 import type { TableStage } from './stage/TableStage';
 import { POT_POS, fmt } from './table/layout';
 import { timing, wait } from './tween';
 import { TELL_UNLOCK, loadTells, saveTells } from './tells';
 import type { Clock, Overlay } from './ui/overlay';
 
-const BIG_HAND_CATEGORY = 7; // four of a kind and up (HandCategory in hand_eval.hpp)
+// HandCategory in core/include/poker/hand_eval.hpp
+const STRAIGHT = 4;
+const FULL_HOUSE = 6;
+const QUADS = 7;
+const STRAIGHT_FLUSH = 8;
+const BIG_NAME: Record<number, string> = { [FULL_HOUSE]: '葫芦', [QUADS]: '四条', [STRAIGHT_FLUSH]: '同花顺' };
 interface Note {
   hand: number;
   cards: string[];
@@ -51,14 +54,17 @@ export class Director {
   private reacted = false;                      // showdown reactions already played this hand
   private tableChips = 0;
   private notes: Note[][] = [[], [], [], [], [], []];
+  private bars: EquityBars | null = null;       // the VS equity bars during an all-in face-off
+  private openedShowdown = false;               // "胜负揭晓" already stamped this hand
+  private ahead: GameEvent[] = [];              // events after the one being played (lookahead)
+  private consumed = new Set<GameEvent>();      // events already played as part of a bigger moment
 
   constructor(
     private game: Game,
     private table: TableStage,
     private ui: Overlay,
     private cast: Character[],
-    private camera: Camera,
-    private fxLayer: Container,
+    private moments: Moments,
     private onFinished: () => void,
   ) {
     ui.onTalk = (kind, code, target) => this.talk(kind, code, target);
@@ -76,6 +82,7 @@ export class Director {
   /** Spectating after elimination: play the rest instantly. */
   skipToEnd() {
     this.skipping = true;
+    this.moments.forceInstant();
     timing.scale = 0;
   }
 
@@ -225,8 +232,6 @@ export class Director {
     if (this.reacted || this.pres === 'off') return;
     this.reacted = true;
     const T = this.table;
-    T.showBanner('胜负揭晓');
-    await wait(700);
     for (const seat of revealed) {
       if (seat === 0) continue; // the system never acts for the human
       const c = this.cast[seat];
@@ -242,8 +247,28 @@ export class Director {
       }
       await wait(250);
     }
-    await wait(1300);
-    T.hideBanner();
+    await wait(1100);
+  }
+
+  /** Whether a seat's best five uses at least one of her own cards. */
+  private usesHole(seat: number, best: string[] | undefined) {
+    const hole = this.table.seats[seat].cards.map((c) => c.code).filter(Boolean);
+    return !!best && best.some((c) => hole.includes(c));
+  }
+
+  /** At most one big moment per hand, the grandest one; the others ride along as tags (docs/08 §4 M13). */
+  private async bigMoment(e: Extract<GameEvent, { t: 'win' }>) {
+    const cat = e.category ?? -1;
+    const won = this.wonTotal[e.seat] ?? 0;
+    const mvp = won >= this.tableChips * 0.25;
+    // A monster that is all board belongs to everyone: no fanfare for it.
+    const name = this.usesHole(e.seat, this.best[e.seat]) ? (e.royal ? '皇家同花顺' : BIG_NAME[cat]) : undefined;
+    if (!name && !mvp) return;
+    if (this.pres === 'simple') return this.moments.quick(name ?? '本局主役', 0xffd36b);
+    const best = this.best[e.seat] ?? [];
+    if (e.royal || cat === STRAIGHT_FLUSH) return this.moments.bigHand(e.seat, cat, !!e.royal, best, mvp ? ['本局主役'] : []);
+    if (mvp) return this.moments.mvp(e.seat, won, name ? [name] : []);
+    return this.moments.bigHand(e.seat, cat, false, best);
   }
 
   // ---------------- event playback ----------------
@@ -281,10 +306,13 @@ export class Director {
         this.winners.add(e.seat);
         this.wonTotal[e.seat] = (this.wonTotal[e.seat] ?? 0) + e.amount;
       }
-    for (const e of all) {
+    for (let i = 0; i < all.length; i++) {
       if (this.stopped) return;
-      await this.playOne(e);
+      if (this.consumed.delete(all[i])) continue;
+      this.ahead = all.slice(i + 1);
+      await this.playOne(all[i]);
     }
+    this.ahead = [];
     if (!this.stopped && this.game.handRunning) this.sync(this.game.state());
   }
 
@@ -316,6 +344,9 @@ export class Director {
         this.winners.clear();
         this.wonTotal = {};
         this.reacted = false;
+        this.openedShowdown = false;
+        void this.bars?.dispose();
+        this.bars = null;
         this.tableChips = e.stacks.reduce((a, b) => a + b, 0);
         this.lineCooldown = this.lineCooldown.map((c) => Math.max(0, c - 1));
         this.ui.resetPreActions();
@@ -364,6 +395,9 @@ export class Director {
         } else {
           const verb = e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注';
           s.setTag(`${verb}${size}${secs}`, 0xffe08a);
+          // M5: the all-in cut-in plays before the chips avalanche in.
+          if (e.allIn && this.pres === 'full') await this.moments.allIn(e.seat, pick(c.lines.allIn) ?? 'ALL IN！');
+          else if (e.allIn && this.pres === 'simple') await this.moments.quick('ALL IN');
           // Heavy bets (the pot or more, or all-in) slam down.
           await T.bet(e.seat, e.amount, e.total, e.allIn || (e.potPct ?? 0) >= 100);
           // How big and how fast the chips went in is part of what others can read.
@@ -374,7 +408,7 @@ export class Director {
         T.refreshPot();
         if (e.allIn) {
           s.markAllIn();
-          if (this.pres === 'full') await allInCutIn(this.fxLayer, c, pick(c.lines.allIn) ?? 'ALL IN！');
+          if (this.pres !== 'off') s.setBurning(true);
         }
         await wait(e.action === 'fold' ? 300 : 500);
         break;
@@ -390,19 +424,16 @@ export class Director {
         });
         const dramatic = this.runout && this.pres !== 'off';
         const big = this.pres !== 'off' && T.totalPot() >= this.tableChips * 0.3;
-        if (dramatic && e.street === 'river' && this.pres === 'full') {
-          await this.camera.push(960, 782, 1.14, 450);
-          await T.revealBoard(e.cards, true, true);
-          this.camera.shake(12, 300);
-          await this.camera.reset(400);
-        } else {
-          await T.revealBoard(e.cards, dramatic, big);
-        }
-        if (e.equity)
+        // M7: in a face-off the river is squeezed open in slow motion.
+        if (this.bars && e.street === 'river' && this.pres === 'full') await this.moments.slowRiver(e.cards[0]);
+        else await T.revealBoard(e.cards, dramatic, big || (dramatic && e.street === 'river'));
+        if (e.equity) {
+          if (this.bars) this.bars.set(e.equity);
           for (const q of e.equity) {
-            T.seats[q.seat].showEquity(q.pct);
+            if (!this.bars) T.seats[q.seat].showEquity(q.pct);
             if (e.street !== 'river') this.equity[q.seat] = q.pct;
           }
+        }
         await wait(dramatic ? (e.street === 'river' ? 400 : 900) : 700); // a beat to read the new card
         break;
       }
@@ -413,36 +444,73 @@ export class Director {
         T.refreshPot();
         break;
       }
-      case 'runout':
+      case 'runout': {
         this.runout = true;
         await T.gatherBets();
-        if (this.pres !== 'off') {
+        if (this.pres === 'off') break;
+        // M6: when cards are still to come, the face-off plays the reveals itself.
+        const shows: Extract<GameEvent, { t: 'show' }>[] = [];
+        for (const x of this.ahead) {
+          if (x.t !== 'show') break;
+          shows.push(x);
+        }
+        const boardComing = this.ahead.some((x) => x.t === 'board');
+        if (shows.length >= 2 && boardComing) {
+          shows.forEach((x) => this.consumed.add(x));
+          const eq = shows[shows.length - 1].equity ?? [];
+          for (const q of eq) this.equity[q.seat] = q.pct;
+          this.bars = await this.moments.versus(shows.map((x) => ({ seat: x.seat, cards: x.cards })), eq, this.pres === 'full');
+          for (const x of shows) {
+            this.best[x.seat] = x.best;
+            if (x.hand) T.seats[x.seat].showHand(x.hand, true);
+          }
+        } else {
           T.showBanner('ALL IN · 摊牌！');
           await wait(700);
           T.hideBanner();
         }
         break;
+      }
       case 'show': {
         const s = T.seats[e.seat];
+        // M8: "胜负揭晓", then a spotlight on each player as her cards turn over.
+        const spotlight = this.pres !== 'off' && !this.bars;
+        if (spotlight && !this.openedShowdown) {
+          this.openedShowdown = true;
+          T.hideBanner();
+          await this.moments.showdownOpen();
+        }
+        if (spotlight) T.focusSeat(e.seat);
         await s.reveal(e.cards, true);
-        if (e.hand) s.showHand(e.hand);
+        if (e.hand) s.showHand(e.hand, this.pres !== 'off');
         this.best[e.seat] = e.best;
-        if (e.equity)
+        if (e.equity) {
+          this.bars?.set(e.equity);
           for (const q of e.equity) {
-            T.seats[q.seat].showEquity(q.pct);
+            if (!this.bars) T.seats[q.seat].showEquity(q.pct);
             this.equity[q.seat] = q.pct;
           }
+        }
+        if (spotlight) await wait(420);
         break;
       }
-      case 'finalHands':
+      case 'finalHands': {
+        T.focusSeat(null);
         for (const h of e.hands) {
-          T.seats[h.seat].showHand(h.hand);
+          T.seats[h.seat].showHand(h.hand, this.pres !== 'off');
           this.best[h.seat] = h.best;
           const cards = T.seats[h.seat].cards.map((c) => c.code ?? '').filter(Boolean);
           this.addNote(h.seat, cards, h.hand, h.strength, false);
         }
+        // Two monsters at once: the hands collide before anyone wins.
+        const strong = e.hands.filter((h) => h.category >= STRAIGHT && this.usesHole(h.seat, h.best)).sort((a, b) => b.category - a.category);
+        if (strong.length >= 2 && strong[0].category > STRAIGHT && this.pres === 'full') {
+          const cardsOf = (seat: number) => T.seats[seat].cards.map((c) => c.code ?? '').filter(Boolean);
+          await this.moments.cooler({ seat: strong[0].seat, cards: cardsOf(strong[0].seat) }, { seat: strong[1].seat, cards: cardsOf(strong[1].seat) });
+        }
         await this.showdownReactions(e.hands.map((h) => h.seat));
         break;
+      }
       case 'voluntaryShow': {
         const s = T.seats[e.seat];
         const c = this.cast[e.seat];
@@ -471,15 +539,15 @@ export class Director {
         if (first) {
           await T.gatherBets();
           T.seats.forEach((s) => s.showEquity(null));
+          T.focusSeat(null);
+          void this.bars?.dispose();
+          this.bars = null;
         }
         const best = this.best[e.seat];
         T.seats.forEach((s) => s.highlightCards(s.seat === e.seat ? best : undefined));
         T.highlightBoard(e.hand ? best : undefined);
+        if (first && this.pres !== 'off') await this.bigMoment(e);
         T.showBanner(`${c.name} 赢得 ${fmt(e.amount)}${e.pot > 0 ? '（边池）' : ''}`, e.hand ?? '');
-        if (e.category !== undefined && e.category >= BIG_HAND_CATEGORY && this.pres === 'full' && e.pot === 0)
-          await bigHand(this.fxLayer, c, e.royal ? '皇家同花顺' : (e.hand ?? '').split(' ')[0], !!e.royal);
-        else if (first && e.seat !== 0 && this.pres === 'full' && (this.wonTotal[e.seat] ?? 0) >= this.tableChips * 0.25)
-          await allInCutIn(this.fxLayer, c, pick(c.lines.win) ?? '我赢了！', 'WIN', 0xe0a630);
         if (first && !e.hand && e.seat !== 0 && this.pres !== 'off') {
           // Everyone folded to a bot: it gloats a little.
           T.seats[e.seat].showSticker(Math.random() < 0.5 ? Sticker.Smug : Sticker.Taunt);
