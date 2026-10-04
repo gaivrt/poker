@@ -8,7 +8,9 @@
 import { music } from './audio/music';
 import { sfx } from './audio/sfx';
 import { type Character, EXPRESSION_LABEL, STICKER_LABEL, gestureCaption, pick, talkLine } from './characters';
-import { Expression, type Game, type GameEvent, Gesture, type SignalKindName, Sticker, type StrengthName, type TableState } from './engine';
+import { Expression, type Game, type GameEvent, Gesture, type SignalKindName, Sticker, type Standing, type StrengthName, type TableState } from './engine';
+import type { Net } from './net/client';
+import type { ServerMsg } from './net/protocol';
 import type { Face } from './fx/stickers';
 import { type EquityBars, type Moments } from './fx/moments';
 import type { TableStage } from './stage/TableStage';
@@ -65,14 +67,24 @@ export class Director {
   private foldedAll = new Set<number>();
   private strengthOf: Record<number, StrengthName> = {};
   private allIns = 0; // all-ins so far this hand (only the first gets the full cut-in)
+  private handActive = false;
+  private remoteState: TableState | null = null;
+  /** Online: the final standings and rank change sent by the server. */
+  result: { standings: Standing[]; rank: { before: number; after: number } } | null = null;
 
+  /**
+   * game: the local engine (single player), or null when `net` drives the game (online).
+   * humans: which seats are people (online opponents are never spoken for by the system).
+   */
   constructor(
-    private game: Game,
+    private game: Game | null,
     private table: TableStage,
     private ui: Overlay,
     private cast: Character[],
     private moments: Moments,
     private onFinished: () => void,
+    private net: Net | null = null,
+    private humans: boolean[] = [true, false, false, false, false, false],
   ) {
     ui.onTalk = (kind, code, target) => this.talk(kind, code, target);
     ui.onNotes = () => this.notesHtml();
@@ -97,8 +109,13 @@ export class Director {
     return this.skipping ? 'off' : this.ui.settings.presentation;
   }
 
+  private isPerson(seat: number) {
+    return !!this.humans[seat];
+  }
+
   async run() {
-    const g = this.game;
+    if (this.net) return this.runRemote(this.net);
+    const g = this.game!;
     g.startHand();
     while (!this.stopped) {
       await this.play(g.drain());
@@ -144,12 +161,95 @@ export class Director {
     if (!this.stopped) this.onFinished();
   }
 
+  /** Online: the server runs the table; this plays what it sends and answers its questions. */
+  private async runRemote(net: Net) {
+    const inbox: ServerMsg[] = [];
+    let wake: (() => void) | null = null;
+    net.handler = (m) => {
+      // Table talk shows at once, even in the middle of an animation.
+      if (m.t === 'live') {
+        for (const e of m.events) if (e.t === 'signal') this.showSignal(e);
+        return;
+      }
+      inbox.push(m);
+      wake?.();
+    };
+    const next = async () => {
+      while (!inbox.length && !this.stopped) await new Promise<void>((r) => (wake = r));
+      wake = null;
+      return inbox.shift();
+    };
+    while (!this.stopped) {
+      const m = await next();
+      if (!m || this.stopped) break;
+      switch (m.t) {
+        case 'events': {
+          // Catching up after a reconnect, or the tab is in the background: no animations.
+          const instant = !!m.replay || document.hidden || this.skipping;
+          const scale = timing.scale;
+          if (instant) timing.scale = 0;
+          this.remoteState = m.state;
+          await this.play(m.events);
+          if (instant && !this.skipping) timing.scale = scale;
+          net.send({ t: 'ready', seq: m.seq });
+          break;
+        }
+        case 'turn': {
+          this.table.seats.forEach((s, i) => s.setActive(i === m.seat));
+          if (m.seat !== 0) this.table.seats[m.seat].startThinking();
+          break;
+        }
+        case 'ask': {
+          this.table.seats.forEach((s, i) => s.setActive(i === 0));
+          await this.table.revealHeroNow();
+          const choice = await this.ui.ask(m.legal, m.ctx, { perActionMs: m.clock.perActionMs, bankMs: m.clock.bankMs });
+          if (choice && !this.stopped) net.send({ t: 'act', type: choice.type, to: choice.to });
+          break;
+        }
+        case 'askShow': {
+          const mask = this.skipping ? 0 : await this.ui.askShow(m.cards.map(prettyCard));
+          net.send({ t: 'show', mask });
+          break;
+        }
+        case 'pause':
+          if (!this.skipping && !document.hidden) await this.ui.waitNext(m.ms);
+          break;
+        case 'end':
+          this.result = { standings: m.standings, rank: m.rank };
+          this.stopped = true;
+          this.onFinished();
+          return;
+        case 'refused':
+          if (m.what === 'signal') this.ui.toast('这条街已经说得够多了，等下一条街吧');
+          else if (m.what === 'act') this.ui.toast('这个操作无效，已自动过牌或弃牌');
+          break;
+        case 'error':
+          this.ui.toast(m.message);
+          break;
+        case 'matched':
+        case 'welcome':
+          break; // a reconnect: the replay that follows catches the table up
+      }
+    }
+  }
+
+  /** Online: give up the seat (it checks or folds by itself until the game ends). */
+  leaveTable() {
+    this.net?.send({ t: 'leave' });
+    this.stop();
+  }
+
   // ---------------- table talk ----------------
 
   private talk(kind: SignalKindName, code: number, target: number): boolean {
     if (this.stopped || this.heroOut) return false;
-    const ok = this.game.signal(kind, code, target);
-    for (const e of this.game.drain()) {
+    if (this.net) {
+      // The server checks the rate limit and sends it back to everyone (us included).
+      this.net.send({ t: 'signal', kind, code, target });
+      return true;
+    }
+    const ok = this.game!.signal(kind, code, target);
+    for (const e of this.game!.drain()) {
       if (e.t === 'signal') this.showSignal(e);
       else this.backlog.push(e);
     }
@@ -192,7 +292,7 @@ export class Director {
       else if (g === Gesture.Stare && e.target >= 0) void this.table.stare(e.seat, e.target);
       note = caption;
     }
-    if (this.game.handRunning || this.handHasWinner) this.did[e.seat].push(note);
+    if (this.handActive || this.handHasWinner) this.did[e.seat].push(note);
   }
 
   private recordTell(e: Extract<GameEvent, { t: 'tellSeen' }>) {
@@ -240,7 +340,7 @@ export class Director {
     this.reacted = true;
     const T = this.table;
     for (const seat of revealed) {
-      if (seat === 0) continue; // the system never acts for the human
+      if (this.isPerson(seat)) continue; // the system never acts for a person
       const c = this.cast[seat];
       const s = T.seats[seat];
       if (this.winners.has(seat)) {
@@ -294,7 +394,7 @@ export class Director {
   // ---------------- event playback ----------------
 
   private markActive() {
-    const st = this.game.state();
+    const st = this.game!.state();
     this.table.seats.forEach((s, i) => s.setActive(i === st.toAct));
   }
 
@@ -311,7 +411,7 @@ export class Director {
   }
 
   private say(seat: number, lines: string[], chance: number) {
-    if (seat === 0 || this.pres !== 'full' || Math.random() > chance) return;
+    if (this.isPerson(seat) || this.pres !== 'full' || Math.random() > chance) return;
     if (this.lineCooldown[seat] > 0) return;
     const line = pick(lines);
     if (!line) return;
@@ -333,14 +433,17 @@ export class Director {
       await this.playOne(all[i]);
     }
     this.ahead = [];
-    if (!this.stopped && this.game.handRunning) this.sync(this.game.state());
+    if (this.stopped) return;
+    if (this.game) {
+      if (this.game.handRunning) this.sync(this.game.state());
+    } else if (this.remoteState && this.remoteState.toAct >= 0) this.sync(this.remoteState);
   }
 
   private updateHud() {
     const h = this.hand;
-    const st = this.game.state();
-    const hero = st.seats[0].stack;
-    const rank = 1 + st.seats.filter((s, i) => i !== 0 && s.stack > hero).length;
+    const st = this.game ? this.game.state() : this.remoteState;
+    const stacks = st ? st.seats.map((s) => s.stack) : this.table.seats.map((s) => s.stack);
+    const rank = 1 + stacks.filter((v, i) => i !== 0 && v > stacks[0]).length;
     const handPart = h.maxHands ? `第 ${h.no} / ${h.maxHands} 手` : `第 ${h.no} 手`;
     const nextLevel = h.handsPerLevel - ((h.no - 1) % h.handsPerLevel);
     const lastHands = h.maxHands && h.maxHands - h.no < nextLevel;
@@ -375,6 +478,7 @@ export class Director {
         this.tableChips = e.stacks.reduce((a, b) => a + b, 0);
         music.setTension(0);
         this.allIns = 0;
+        this.handActive = true;
         this.moments.newHand();
         this.lineCooldown = this.lineCooldown.map((c) => Math.max(0, c - 1));
         this.ui.resetPreActions();
@@ -412,6 +516,7 @@ export class Director {
         const s = T.seats[e.seat];
         const c = this.cast[e.seat];
         s.setActive(false);
+        s.stopThinking();
         const secs = e.thinkMs !== undefined ? ` ${(e.thinkMs / 1000).toFixed(1)}s` : '';
         const size = e.potPct ? ` ${e.potPct}%池` : '';
         if (e.action === 'bet' || e.action === 'raise') {
@@ -600,7 +705,7 @@ export class Director {
         T.highlightBoard(e.hand ? best : undefined);
         if (first && this.pres !== 'off') await this.bigMoment(e);
         T.showBanner(`${c.name} 赢得 ${fmt(e.amount)}${e.pot > 0 ? '（边池）' : ''}`, e.hand ?? '');
-        if (first && !e.hand && e.seat !== 0 && this.pres !== 'off') {
+        if (first && !e.hand && !this.isPerson(e.seat) && this.pres !== 'off') {
           // Everyone folded to a bot: it gloats a little.
           T.seats[e.seat].showSticker(Math.random() < 0.5 ? Sticker.Smug : Sticker.Taunt);
           this.say(e.seat, c.lines.win, 0.7);
@@ -611,6 +716,7 @@ export class Director {
         break;
       }
       case 'handEnd':
+        this.handActive = false;
         T.seats.forEach((s) => s.setActive(false));
         this.updateHud();
         break;

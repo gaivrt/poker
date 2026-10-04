@@ -1,0 +1,19 @@
+{
+  "name": "poker-server",
+  "private": true,
+  "type": "module",
+  "description": "Online game server: runs the C++ engine (WebAssembly) and talks to clients over WebSocket.",
+  "scripts": {
+    "start": "node src/main.ts",
+    "check": "tsc --noEmit -p ."
+  },
+  "engines": { "node": ">=22.18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.7.0"
+  }
+}

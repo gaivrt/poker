@@ -17,11 +17,21 @@ export interface WasmSession {
   legal(): string;
   roster(): string;
   standings(): string;
+  // online: several human seats
+  isHuman(seat: number): boolean;
+  signalFrom(seat: number, kind: number, code: number, target: number): boolean;
+  canShow(seat: number): boolean;
+  show(seat: number, mask: number): boolean;
+  drainAll(): string;
+  stateFor(seat: number): string;
   delete(): void;
 }
 
 export interface PokerModule {
-  Session: new (format: string, difficulty: number, seed: number) => WasmSession;
+  Session: {
+    new (format: string, difficulty: number, seed: number): WasmSession;
+    new (format: string, difficulty: number, seed: number, humanMask: number): WasmSession;
+  };
 }
 
 declare const createPokerModule: () => Promise<PokerModule>;

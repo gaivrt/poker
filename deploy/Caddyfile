@@ -1,0 +1,5 @@
+# HTTPS for the game; WebSockets (/ws) pass through as they are.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy poker:8787
+}

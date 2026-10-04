@@ -42,6 +42,53 @@ TEST(session_plays_full_games) {
     }
 }
 
+// Online: three humans (seats 0, 2, 4) and three bots. Every human acts for itself,
+// hole cards are tagged for their owner only, and humans can talk and show.
+TEST(session_multi_human_table) {
+    Session s("quick", 1, 77, 0b010101);
+    CHECK(s.isHuman(0) && !s.isHuman(1) && s.isHuman(2) && !s.isHuman(3) && s.isHuman(4) && !s.isHuman(5));
+    CHECK(contains(s.roster(), "[-1,"));
+    int hands = 0, humanActs = 0;
+    std::string all;
+    s.startHand();
+    CHECK(s.signalFrom(2, 0, 0, -1));   // a line from seat 2
+    CHECK(!s.signalFrom(1, 0, 0, -1));  // seat 1 is a bot
+    CHECK(!s.signalFrom(4, 0, 0, 4));   // can't target yourself
+    while (!s.finished()) {
+        all += s.drainAll();
+        if (s.isHumanTurn()) {
+            CHECK(!s.stepBot());
+            const std::string la = s.legal();
+            CHECK(s.humanAct(contains(la, "\"canCheck\":true") ? "check" : "call", 0, 1500));
+            ++humanActs;
+        } else if (s.handRunning()) {
+            CHECK(s.stepBot());
+        } else {
+            for (int seat : {0, 2, 4})
+                if (s.canShow(seat)) CHECK(s.show(seat, 3));
+            s.finishHand();
+            ++hands;
+            if (!s.finished()) s.startHand();
+        }
+        CHECK(hands < 500);
+    }
+    all += s.drainAll();
+    CHECK(humanActs > 0);
+    CHECK(contains(all, "\"t\":\"tournamentEnd\""));
+    // Every hole-card event is addressed to the seat it belongs to.
+    std::size_t pos = 0;
+    int holes = 0;
+    while ((pos = all.find("\"t\":\"hole\",\"seat\":", pos)) != std::string::npos) {
+        const char seat = all[pos + 18];
+        const std::size_t open = all.rfind("{\"to\":", pos);
+        CHECK(open != std::string::npos && all[open + 6] == seat);
+        ++holes;
+        ++pos;
+    }
+    CHECK(holes > 0);
+    CHECK(contains(s.stateFor(2), "\"hole\""));
+}
+
 TEST(session_rejects_out_of_turn_and_bad_actions) {
     Session s("quick", 0, 5);
     s.startHand();

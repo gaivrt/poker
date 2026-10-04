@@ -8,6 +8,13 @@ using poker::app::Session;
 EMSCRIPTEN_BINDINGS(poker) {
     emscripten::class_<Session>("Session")
         .constructor<std::string, int, unsigned>()
+        .constructor<std::string, int, unsigned, int>()
+        .function("isHuman", &Session::isHuman)
+        .function("signalFrom", &Session::signalFrom)
+        .function("canShow", &Session::canShow)
+        .function("show", &Session::show)
+        .function("drainAll", &Session::drainAll)
+        .function("stateFor", &Session::stateFor)
         .function("finished", &Session::finished)
         .function("handRunning", &Session::handRunning)
         .function("isHumanTurn", &Session::isHumanTurn)

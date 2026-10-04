@@ -18,6 +18,8 @@ export interface Settings {
 }
 export interface HomeHandlers {
   start: (format: Format, difficulty: Difficulty, ranked: boolean) => void;
+  /** Ranked, online: real players, AI fills the empty seats. */
+  online: (format: 'quick' | 'standard') => void;
   rename: (name: string) => void;
 }
 export interface Choice {
@@ -358,7 +360,7 @@ export class Overlay {
       <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">ANIME HOLD'EM</div></div>
       <div class="modes">
         <button class="poster ranked"><span class="tape"></span>
-          <b>段位赛</b><small>打满手数按筹码排名 · 赢分升段</small>
+          <b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位</small>
           <span class="tier"><em>${t.name}</em>${t.next ? `距 ${t.next} 还差 ${t.toNext} 分` : '已是最高段位'}</span></button>
         <div class="poster-row">
           <button class="poster practice"><span class="tape"></span><b>单人练习</b><small>自选赛制和难度</small></button>
@@ -378,7 +380,7 @@ export class Overlay {
       h.rename(n);
       this.showHome({ ...profile, name: n }, h);
     });
-    q<HTMLButtonElement>('.ranked').onclick = () => this.formatDialog(true, (f, d) => h.start(f, d, true), profile);
+    q<HTMLButtonElement>('.ranked').onclick = () => this.formatDialog(true, (f) => h.online(f === 'standard' ? 'standard' : 'quick'), profile);
     q<HTMLButtonElement>('.practice').onclick = () => this.formatDialog(false, (f, d) => h.start(f, d, false), profile);
     this.home.querySelectorAll<HTMLButtonElement>('.rounds button').forEach((b) =>
       (b.onclick = () => {
@@ -511,6 +513,34 @@ export class Overlay {
       <button class="primary close">关闭</button>`);
   }
 
+  // ---------- online ----------
+  private conn = el('div', 'conn hidden', '<i></i>连接断开，正在重新连接…');
+
+  /** "Reconnecting…" while the connection to the server is down mid-game. */
+  setConnection(ok: boolean) {
+    if (!this.conn.parentElement) this.root.append(this.conn);
+    this.conn.classList.toggle('hidden', ok);
+  }
+
+  showMatchmaking(format: 'quick' | 'standard', onCancel: () => void) {
+    this.home.classList.add('hidden');
+    this.dialog('small match', `
+      <div class="title2">匹配中</div>
+      <div class="spin"><i></i><i></i><i></i></div>
+      <div class="mm-found">正在寻找对手…</div>
+      <div class="hint center mm-sub">${format === 'quick' ? '快速赛 · 18 手' : '标准赛 · 30 手'} · 时间到了还没坐满，空位由 AI 补上</div>
+      <button class="ghost cancel">取消</button>`);
+    (this.modal.querySelector('.cancel') as HTMLButtonElement).onclick = () => {
+      this.closeModal();
+      onCancel();
+    };
+  }
+
+  updateMatchmaking(found: number, seconds: number) {
+    const f = this.modal.querySelector('.mm-found');
+    if (f) f.innerHTML = `已找到 <b>${found}</b> / 6 名玩家<small>${seconds > 0 ? `${seconds} 秒后开局` : '马上开局'}</small>`;
+  }
+
   closeModal() {
     this.modal.className = 'modal hidden';
     this.modal.innerHTML = '';
@@ -566,6 +596,22 @@ export class Overlay {
     (this.modal.querySelector('.close') as HTMLButtonElement).onclick = () => this.closeModal();
   }
 
+  /** A question with two answers. */
+  confirm(title: string, body: string, okLabel: string, onOk: () => void, onCancel: () => void) {
+    this.dialog('small', `
+      <div class="title2">${esc(title)}</div>
+      <p class="note">${esc(body)}</p>
+      <div class="row"><button class="ghost no">回到主页</button><button class="primary yes">${esc(okLabel)}</button></div>`);
+    (this.modal.querySelector('.no') as HTMLButtonElement).onclick = () => {
+      this.closeModal();
+      onCancel();
+    };
+    (this.modal.querySelector('.yes') as HTMLButtonElement).onclick = () => {
+      this.closeModal();
+      onOk();
+    };
+  }
+
   private confirmQuit() {
     this.modal.className = 'modal';
     this.modal.innerHTML = `
@@ -581,9 +627,12 @@ export class Overlay {
   }
 
   // ---------- spectating after elimination ----------
+  /** The button on the spectating bar (online: leave, since the game keeps its own pace). */
+  spectateAction = '直接看结果';
+
   showSpectate(place: string) {
     this.spectate.classList.remove('hidden');
-    this.spectate.innerHTML = `<span>你已出局（${place}），正在观战</span><button class="primary">直接看结果</button>`;
+    this.spectate.innerHTML = `<span>你已出局（${place}），正在观战</span><button class="primary">${this.spectateAction}</button>`;
     (this.spectate.querySelector('button') as HTMLButtonElement).onclick = () => this.onSkip();
     this.pre.classList.add('hidden');
   }

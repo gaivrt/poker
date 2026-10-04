@@ -349,3 +349,16 @@ input.name { display: block; width: 100%; height: 76px; border-radius: 16px; bor
 
 .row2 { display: flex; gap: 20px; }
 .row2 > * { flex: 1; }
+
+/* ---------- online ---------- */
+.card.match { text-align: center; }
+.card.match .spin { position: relative; width: 200px; height: 150px; margin: 10px auto 6px; }
+.card.match .spin i { position: absolute; left: 50px; top: 0; width: 100px; height: 140px; border-radius: 12px; background: var(--wine); border: 5px solid #fff; box-shadow: inset 0 0 0 6px var(--gold), var(--shadow); animation: shuffle 1s ease-in-out infinite; }
+.card.match .spin i:nth-child(2) { animation-delay: .12s; }
+.card.match .spin i:nth-child(3) { animation-delay: .24s; }
+.mm-found { font-family: var(--font-display); font-size: 40px; }
+.mm-found b { color: var(--coral); font-family: var(--font-num); font-weight: 400; margin: 0 4px; }
+.mm-found small { display: block; margin-top: 4px; font-family: var(--font); font-size: 22px; font-weight: 900; color: var(--muted); }
+.card.match .cancel { width: 100%; }
+.conn { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 12px; padding: 12px 24px; border-radius: 16px; background: var(--wine); color: #fff; font-size: 22px; font-weight: 900; border: 4px solid #fff; box-shadow: var(--shadow); pointer-events: none; }
+.conn i { width: 16px; height: 16px; border-radius: 50%; background: var(--gold); animation: pulse .6s ease-in-out infinite alternate; }

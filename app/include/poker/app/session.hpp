@@ -12,7 +12,9 @@
 
 namespace poker::app {
 
-// A single-player game: the human in seat 0 against five bots.
+// A game of six seats: by default the human in seat 0 against five bots (the
+// single-player client); the online server passes a mask of human seats instead and
+// the rest are bots.
 //
 // This is the boundary the web client talks to (through WebAssembly). Everything
 // crosses it as JSON strings so the binding layer stays trivial. The client drives
@@ -27,12 +29,19 @@ namespace poker::app {
 //         else { maybe s.humanShow(...); s.finishHand(); if (!s.finished()) s.startHand(); }
 //
 // Table talk (docs/06-mind-games.md) can be sent at any time with humanSignal().
+//
+// Online (several humans): act with humanAct() when isHumanTurn() (it acts for
+// toAct()), talk with signalFrom(seat, ...), show with show(seat, mask), and read
+// events with drainAll(), which tags each one with who may see it.
 class Session {
 public:
     static constexpr int kHuman = 0;
 
     // format: "quick" | "standard" | "classic"; difficulty: 0 easy, 1 normal, 2 hard.
-    Session(const std::string& format, int difficulty, unsigned seed);
+    // humanMask: bit s set = seat s is a human (default: seat 0 only).
+    Session(const std::string& format, int difficulty, unsigned seed, int humanMask = 1);
+
+    bool isHuman(int seat) const;
 
     bool finished() const { return tournament_->finished(); }
     bool handRunning() const;
@@ -50,15 +59,21 @@ public:
     // Table talk from the human. kind: 0 line, 1 expression, 2 gesture, 3 sticker; code per talk.hpp;
     // target: a seat or -1. False when rate-limited or invalid.
     bool humanSignal(int kind, int code, int target);
+    bool signalFrom(int seat, int kind, int code, int target);
     // After winning uncontested the human may show cards: mask 1 = first, 2 = second, 3 = both.
     bool canHumanShow() const;
     bool humanShow(int mask);
+    bool canShow(int seat) const;
+    bool show(int seat, int mask);
     void finishHand();
 
-    // New events visible to the human since the last call, as a JSON array.
+    // New events visible to the human in seat 0 since the last call, as a JSON array.
     std::string drainEvents();
-    // Public table state plus the human's cards, as a JSON object.
+    // All new events, each as {"to":seat or -1 for everyone,"e":event}, as a JSON array.
+    std::string drainAll();
+    // Public table state plus the cards of seat 0 (stateFor: of `seat`), as a JSON object.
     std::string state() const;
+    std::string stateFor(int seat) const;
     // The human's legal actions (JSON); all false when it is not the human's turn.
     std::string legal() const;
     // Seat roster: personality preset index per seat (-1 for the human), as JSON.
@@ -90,7 +105,13 @@ private:
     std::unique_ptr<Tournament> tournament_;
     std::vector<std::unique_ptr<ai::Bot>> bots_;
     std::vector<int> personality_;
-    std::vector<std::string> pending_;
+    struct Pending {
+        int to;  // -1: everyone; otherwise only that seat may see it
+        std::string json;
+    };
+    void push(std::string json, int to = -1) { pending_.push_back({to, std::move(json)}); }
+    std::vector<Pending> pending_;
+    std::vector<bool> human_;
     std::size_t converted_ = 0;  // engine events of the current hand already converted
     bool handSettled_ = false;   // finishHand() already ran for the current hand
     bool finalsSent_ = false;    // "finalHands" already emitted for the current hand
@@ -110,7 +131,7 @@ private:
     std::optional<ai::Plan> plan_;
     std::size_t planKey_ = 0;         // engine event count when plan_ was made
     std::vector<bool> fullyShown_;    // voluntarily showed both cards this hand
-    bool humanShowed_ = false;
+    std::vector<bool> showed_;        // a human already chose to show this hand
     std::vector<bool> provoked_;      // folded to someone who then showed a bluff
 };
 

@@ -1,0 +1,26 @@
+# One server: the game (Node) behind Caddy, which gets HTTPS certificates by itself.
+#   cd deploy && DOMAIN=poker.example.com docker compose up -d --build
+services:
+  poker:
+    build: ..
+    restart: unless-stopped
+    environment:
+      - MATCH_WAIT_SEC=20
+    volumes:
+      - pokerdata:/data
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN to your domain name}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on:
+      - poker
+volumes:
+  pokerdata:
+  caddydata:

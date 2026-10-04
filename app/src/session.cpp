@@ -201,7 +201,7 @@ std::vector<double> runoutEquity(const std::vector<std::array<Card, 2>>& hands, 
     return win;
 }
 
-Session::Session(const std::string& format, int difficulty, unsigned seed)
+Session::Session(const std::string& format, int difficulty, unsigned seed, int humanMask)
     : rng_(std::make_unique<Xoshiro256>(seed)) {
     const TournamentConfig cfg = configFor(format);
     tournament_ = std::make_unique<Tournament>(cfg, *rng_);
@@ -214,9 +214,13 @@ Session::Session(const std::string& format, int difficulty, unsigned seed)
     for (std::size_t i = order.size() - 1; i > 0; --i) std::swap(order[i], order[static_cast<std::size_t>(rng_->below(i + 1))]);
 
     personality_.assign(static_cast<std::size_t>(cfg.numSeats), -1);
+    human_.assign(static_cast<std::size_t>(cfg.numSeats), false);
+    for (int s = 0; s < cfg.numSeats; ++s) human_[static_cast<std::size_t>(s)] = (humanMask >> s) & 1;
     bots_.resize(static_cast<std::size_t>(cfg.numSeats));
-    for (int s = 1; s < cfg.numSeats; ++s) {
-        const int p = order[static_cast<std::size_t>(s - 1) % order.size()];
+    std::size_t next = 0;
+    for (int s = 0; s < cfg.numSeats; ++s) {
+        if (human_[static_cast<std::size_t>(s)]) continue;
+        const int p = order[next++ % order.size()];
         personality_[static_cast<std::size_t>(s)] = p;
         bots_[static_cast<std::size_t>(s)] = ai::makeBot(diff, presets[static_cast<std::size_t>(p)]);
     }
@@ -229,7 +233,11 @@ bool Session::handRunning() const {
 
 int Session::toAct() const { return handRunning() ? tournament_->currentHand()->toAct() : -1; }
 
-bool Session::isHumanTurn() const { return toAct() == kHuman; }
+bool Session::isHuman(int seat) const {
+    return seat >= 0 && static_cast<std::size_t>(seat) < human_.size() && human_[static_cast<std::size_t>(seat)];
+}
+
+bool Session::isHumanTurn() const { return isHuman(toAct()); }
 
 void Session::startHand() {
     if (finished() || handRunning()) return;
@@ -252,7 +260,7 @@ void Session::startHand() {
     actConverted_ = 0;
     plan_.reset();
     fullyShown_.assign(n, false);
-    humanShowed_ = false;
+    showed_.assign(n, false);
     provoked_.assign(n, false);
 
     const BlindLevel& lv = tournament_->level();
@@ -265,7 +273,7 @@ void Session::startHand() {
     j.key("stacks").open('[');
     for (int s = 0; s < h.numSeats(); ++s) j.num(static_cast<double>(h.config().stacks[static_cast<std::size_t>(s)]));
     j.close(']').close('}');
-    pending_.push_back(j.done());
+    push(j.done());
     collect();
 }
 
@@ -273,7 +281,7 @@ std::string Session::prepareBot() {
     if (!handRunning()) return "{}";
     Hand& h = *tournament_->currentHand();
     const int s = h.toAct();
-    if (s == kHuman) return "{}";
+    if (isHuman(s)) return "{}";
     if (!plan_ || planKey_ != h.events().size()) {
         plan_ = bots_[static_cast<std::size_t>(s)]->plan(h.view(s), *rng_);
         planKey_ = h.events().size();
@@ -288,7 +296,7 @@ bool Session::stepBot() {
     if (!handRunning()) return false;
     Hand& h = *tournament_->currentHand();
     const int s = h.toAct();
-    if (s == kHuman) return false;
+    if (isHuman(s)) return false;
     if (!plan_ || planKey_ != h.events().size()) prepareBot();
     const ai::Plan plan = *plan_;
     plan_.reset();
@@ -333,9 +341,10 @@ bool Session::humanAct(const std::string& type, double to, int thinkMs) {
     else if (type == "bet") a = Action::bet(amount);
     else if (type == "raise") a = Action::raise(amount);
     else return false;
+    const int seat = h.toAct();
     const Sizing size = sizingOf(h, a);
     if (!h.act(a)) return false;
-    recordAction(kHuman, std::max(0, thinkMs), a, size);  // before collect(): the act event carries it
+    recordAction(seat, std::max(0, thinkMs), a, size);  // before collect(): the act event carries it
     collect();
     return true;
 }
@@ -380,7 +389,7 @@ void Session::emitSignal(const Signal& sig) {
     Json j;
     j.open('{').key("t").str("signal").key("seat").num(sig.seat).key("kind").str(kindName(sig.kind));
     j.key("code").num(sig.code).key("target").num(sig.target).close('}');
-    pending_.push_back(j.done());
+    push(j.done());
     if (inPlay(sig.seat)) features_[static_cast<std::size_t>(sig.seat)].push_back(featureOf(sig.kind, sig.code));
 }
 
@@ -392,13 +401,15 @@ void Session::emitTalk(int seat, const ai::Talk& talk) {
     for (int t : talk.tells) tellUses_.push_back({seat, t});
 }
 
-bool Session::humanSignal(int kind, int code, int target) {
+bool Session::humanSignal(int kind, int code, int target) { return signalFrom(kHuman, kind, code, target); }
+
+bool Session::signalFrom(int seat, int kind, int code, int target) {
     const Hand* h = tournament_->currentHand();
-    if (!h || handSettled_ || kind < 0 || kind > 3) return false;
+    if (!h || handSettled_ || kind < 0 || kind > 3 || !isHuman(seat)) return false;
     const auto k = static_cast<SignalKind>(kind);
     if (code < 0 || code >= codeCount(k)) return false;
-    if (target < -1 || target >= h->numSeats() || target == kHuman) return false;
-    if (tournament_->stacks()[kHuman] == 0 && !h->seat(kHuman).inHand) return false;  // out of the game
+    if (target < -1 || target >= h->numSeats() || target == seat) return false;
+    if (tournament_->stacks()[static_cast<std::size_t>(seat)] == 0 && !h->seat(seat).inHand) return false;  // out of the game
 
     // Rate limit per street: 3 lines, 4 expressions, 3 gestures.
     if (h->street() != talkStreet_) {
@@ -406,11 +417,11 @@ bool Session::humanSignal(int kind, int code, int target) {
         for (auto& c : talkCount_) c = {0, 0, 0, 0};
     }
     static constexpr int kLimit[4] = {3, 4, 3, 3};
-    auto& count = talkCount_[kHuman][static_cast<std::size_t>(kind)];
+    auto& count = talkCount_[static_cast<std::size_t>(seat)][static_cast<std::size_t>(kind)];
     if (count >= kLimit[kind]) return false;
     ++count;
 
-    const Signal sig{kHuman, target, k, static_cast<std::uint8_t>(code)};
+    const Signal sig{seat, target, k, static_cast<std::uint8_t>(code)};
     emitSignal(sig);
 
     // Someone answers a line or a sticker: the one it was aimed at, else a bot still in the hand.
@@ -418,20 +429,23 @@ bool Session::humanSignal(int kind, int code, int target) {
         int responder = target;
         if (responder < 0) {
             std::vector<int> candidates;
-            for (int s = 1; s < h->numSeats(); ++s)
-                if (inPlay(s)) candidates.push_back(s);
+            for (int s = 0; s < h->numSeats(); ++s)
+                if (inPlay(s) && !isHuman(s)) candidates.push_back(s);
             if (!candidates.empty()) responder = candidates[static_cast<std::size_t>(rng_->below(candidates.size()))];
         }
-        if (responder > 0 && h->seat(responder).inHand)
+        if (responder >= 0 && !isHuman(responder) && h->seat(responder).inHand)
             emitTalk(responder, bots_[static_cast<std::size_t>(responder)]->respond(sig, h->view(responder), *rng_));
     }
     return true;
 }
 
-bool Session::canHumanShow() const {
+bool Session::canHumanShow() const { return canShow(kHuman); }
+
+bool Session::canShow(int seat) const {
     const Hand* h = tournament_->currentHand();
-    if (!h || !h->complete() || handSettled_ || humanShowed_ || h->wentToShowdown()) return false;
-    return h->winnings()[kHuman] > 0;
+    if (!isHuman(seat) || !h || !h->complete() || handSettled_ || h->wentToShowdown()) return false;
+    if (showed_[static_cast<std::size_t>(seat)]) return false;
+    return h->winnings()[static_cast<std::size_t>(seat)] > 0;
 }
 
 std::string Session::handInfo(int seat, const std::vector<Card>& shown, Strength st) const {
@@ -458,7 +472,7 @@ void Session::revealVoluntary(int seat, int mask) {
     if (mask & 1) shown.push_back(hole[0]);
     if (mask & 2) shown.push_back(hole[1]);
     const Strength st = ai::classifyHand(hole, h.board());
-    pending_.push_back(handInfo(seat, shown, st));
+    push(handInfo(seat, shown, st));
     if (mask == 3) {
         fullyShown_[static_cast<std::size_t>(seat)] = true;
         // Showing a bluff to the players who folded to it can put them on tilt.
@@ -468,10 +482,12 @@ void Session::revealVoluntary(int seat, int mask) {
     }
 }
 
-bool Session::humanShow(int mask) {
-    if (!canHumanShow() || mask < 1 || mask > 3) return false;
-    humanShowed_ = true;
-    revealVoluntary(kHuman, mask);
+bool Session::humanShow(int mask) { return show(kHuman, mask); }
+
+bool Session::show(int seat, int mask) {
+    if (!canShow(seat) || mask < 1 || mask > 3) return false;
+    showed_[static_cast<std::size_t>(seat)] = true;
+    revealVoluntary(seat, mask);
     return true;
 }
 
@@ -482,8 +498,8 @@ void Session::finishHand() {
 
     // A bot that won without a showdown may show its bluff.
     if (!h->wentToShowdown())
-        for (int s = 1; s < n; ++s)
-            if (h->winnings()[static_cast<std::size_t>(s)] > 0 &&
+        for (int s = 0; s < n; ++s)
+            if (!isHuman(s) && h->winnings()[static_cast<std::size_t>(s)] > 0 &&
                 bots_[static_cast<std::size_t>(s)]->wantsToShow(h->view(s), *rng_))
                 revealVoluntary(s, 3);
 
@@ -492,8 +508,8 @@ void Session::finishHand() {
         const bool shown = (h->wentToShowdown() && isRevealed_[static_cast<std::size_t>(r)]) || fullyShown_[static_cast<std::size_t>(r)];
         if (!shown) continue;
         const Strength st = ai::classifyHand(h->seat(r).hole, h->board());
-        for (int b = 1; b < n; ++b)
-            if (b != r) bots_[static_cast<std::size_t>(b)]->learn(r, features_[static_cast<std::size_t>(r)], st);
+        for (int b = 0; b < n; ++b)
+            if (b != r && !isHuman(b)) bots_[static_cast<std::size_t>(b)]->learn(r, features_[static_cast<std::size_t>(r)], st);
         // A bot's tell that matched its revealed hand: the player may have spotted it.
         std::vector<int> seen;
         for (const auto& u : tellUses_) {
@@ -503,7 +519,7 @@ void Session::finishHand() {
             seen.push_back(u.tell);
             Json j;
             j.open('{').key("t").str("tellSeen").key("seat").num(r).key("tell").num(u.tell).key("text").str(t->textZh).close('}');
-            pending_.push_back(j.done());
+            push(j.done());
         }
     }
 
@@ -512,9 +528,9 @@ void Session::finishHand() {
     handSettled_ = true;
 
     // Big losses (or being shown a bluff) can tilt a bot.
-    for (int s = 1; s < n; ++s) {
+    for (int s = 0; s < n; ++s) {
         const auto i = static_cast<std::size_t>(s);
-        if (before[i] == 0) continue;
+        if (before[i] == 0 || isHuman(s)) continue;
         emitTalk(s, bots_[i]->afterHand(before[i], tournament_->stacks()[i], provoked_[i], *rng_));
     }
 
@@ -526,14 +542,14 @@ void Session::finishHand() {
                     Json j;
                     j.open('{').key("t").str("eliminated").key("seat").num(s).key("place").num(row.place);
                     j.key("placeTo").num(row.placeTo).close('}');
-                    pending_.push_back(j.done());
+                    push(j.done());
                 }
         }
     }
     if (finished()) {
         Json j;
         j.open('{').key("t").str("tournamentEnd").key("standings").raw(standings()).close('}');
-        pending_.push_back(j.done());
+        push(j.done());
     }
 }
 
@@ -544,9 +560,8 @@ void Session::collect(std::size_t upTo) {
     const std::size_t end = std::min(upTo, ev.size());
     for (; converted_ < end; ++converted_) {
         const Event& e = ev[converted_];
-        if (e.visibleTo >= 0 && e.visibleTo != kHuman) continue;
         const std::string j = eventJson(e);
-        if (!j.empty()) pending_.push_back(j);
+        if (!j.empty()) push(j, e.visibleTo);
     }
 }
 
@@ -653,7 +668,7 @@ std::string Session::eventJson(const Event& e) {
                     f.close('}');
                 }
                 f.close(']').close('}');
-                pending_.push_back(f.done());
+                push(f.done());
             }
             j.key("t").str("win").key("seat").num(e.seat).key("amount").num(static_cast<double>(e.amount));
             j.key("pot").num(e.potIndex);
@@ -669,16 +684,32 @@ std::string Session::eventJson(const Event& e) {
 
 std::string Session::drainEvents() {
     std::string out = "[";
-    for (std::size_t i = 0; i < pending_.size(); ++i) {
-        if (i) out += ',';
-        out += pending_[i];
+    bool first = true;
+    for (const Pending& p : pending_) {
+        if (p.to >= 0 && p.to != kHuman) continue;
+        if (!first) out += ',';
+        out += p.json;
+        first = false;
     }
     out += ']';
     pending_.clear();
     return out;
 }
 
-std::string Session::state() const {
+std::string Session::drainAll() {
+    std::string out = "[";
+    for (std::size_t i = 0; i < pending_.size(); ++i) {
+        if (i) out += ',';
+        out += "{\"to\":" + std::to_string(pending_[i].to) + ",\"e\":" + pending_[i].json + "}";
+    }
+    out += ']';
+    pending_.clear();
+    return out;
+}
+
+std::string Session::state() const { return stateFor(kHuman); }
+
+std::string Session::stateFor(int seat) const {
     const Tournament& t = *tournament_;
     const Hand* h = t.currentHand();
     Json j;
@@ -707,7 +738,8 @@ std::string Session::state() const {
         j.key("board");
         cards(j, h->board());
         j.key("hole");
-        cards(j, {h->seat(kHuman).hole[0], h->seat(kHuman).hole[1]});
+        const int me = std::clamp(seat, 0, h->numSeats() - 1);
+        cards(j, {h->seat(me).hole[0], h->seat(me).hole[1]});
         j.key("currentBet").num(static_cast<double>(h->currentBet()));
         j.key("bb").num(static_cast<double>(h->config().bigBlind)).key("sb").num(static_cast<double>(h->config().smallBlind));
     }

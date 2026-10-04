@@ -4,6 +4,8 @@ import './style.css';
 import { music } from './audio/music';
 import { sfx } from './audio/sfx';
 import { CAST, type Character, HERO, characterFor } from './characters';
+import { Net, serverUrl } from './net/client';
+import type { OnlineFormat, SeatInfo, ServerMsg } from './net/protocol';
 import { Director } from './director';
 import { type Difficulty, type Format, Game, Sticker, loadEngine } from './engine';
 import { Camera } from './fx/camera';
@@ -184,13 +186,115 @@ async function showHome() {
   lobby = new Lobby(bg, poses.win, mascot, particles, worldFx);
   world.addChild(lobby);
   const profile = loadProfile();
-  overlay.showHome(profile, {
-    start: (format, difficulty, ranked) => void start(format, difficulty, ranked),
-    rename: (name) => {
+  const handlers = {
+    start: (format: Format, difficulty: Difficulty, ranked: boolean) => void start(format, difficulty, ranked),
+    online: (format: OnlineFormat) => void startOnline(format),
+    rename: (name: string) => {
       profile.name = name;
       saveProfile(profile);
     },
+  };
+  overlay.showHome(profile, handlers);
+  // Signed in to the server in the background: show the online rank (and rejoin a running game).
+  if (serverUrl()) {
+    const shown = lobby;
+    net.connect(profile.name).then((w) => {
+      Object.assign(profile, { points: w.points, games: w.games });
+      saveProfile(profile);
+      if (lobby === shown && lobby) overlay.showHome(profile, handlers);
+    }, () => {});
+  }
+}
+
+// ---------------- online ----------------
+
+const net = new Net();
+let onlineBuffer: ServerMsg[] | null = null; // messages that arrive while the table loads
+
+/** What the server says while we are not at a table (home, matchmaking). */
+function lobbyHandler(m: ServerMsg) {
+  if (m.t === 'queue') overlay.updateMatchmaking(m.found, m.seconds);
+  else if (m.t === 'matched') void beginOnline(m);
+  else if (m.t === 'refused' && m.what === 'queue') overlay.toast(m.reason ?? '现在无法匹配');
+  else if (m.t === 'error') overlay.toast(m.message);
+}
+net.handler = lobbyHandler;
+net.onStatus = (ok) => overlay.setConnection(ok || !director || !onlineGame);
+let onlineGame = false;
+
+async function startOnline(format: OnlineFormat) {
+  sfx.unlock();
+  const profile = loadProfile();
+  overlay.showMatchmaking(format, () => {
+    net.send({ t: 'cancel' });
+    void showHome();
   });
+  try {
+    await net.connect(profile.name);
+  } catch {
+    overlay.closeModal();
+    offlineFallback(format);
+    return;
+  }
+  net.handler = lobbyHandler;
+  net.send({ t: 'queue', format });
+}
+
+/** No server (e.g. this demo page): offer a ranked game against the AI instead. */
+function offlineFallback(format: OnlineFormat) {
+  overlay.confirm(
+    '连不上游戏服务器',
+    '联网对战需要游戏服务器（这个试玩页面没有连接服务器）。要先打一局离线段位赛吗？对手全部是 AI，段位分只记在这台设备上。',
+    '离线段位赛',
+    () => void start(format, loadProfile().points >= 600 ? 2 : 1, true),
+    () => void showHome(),
+  );
+}
+
+function personCharacter(s: SeatInfo): Character {
+  // Another player: their name on a character look, and no system lines spoken for them.
+  return { ...CAST[s.look % CAST.length], name: s.name, style: '玩家', lines: { raise: [], call: [], allIn: [], win: [], out: [] } };
+}
+
+async function beginOnline(m: Extract<ServerMsg, { t: 'matched' }>) {
+  onlineBuffer = [];
+  net.handler = (x) => onlineBuffer?.push(x);
+  overlay.closeModal();
+  if (m.rejoin) overlay.toast('回到牌桌：正在追上进度');
+  teardown();
+  const cast = m.seats.map((s, i) => (i === 0 ? HERO : s.bot ? CAST[s.look % CAST.length] : personCharacter(s)));
+  const looks = m.seats.map((s, i) => (i === 0 ? -1 : s.look));
+  const built = await buildTable(cast, looks);
+  onlineGame = true;
+  const finish = () => {
+    onlineGame = false;
+    net.handler = lobbyHandler;
+    overlay.setConnection(true);
+    applySettings();
+    const result = director?.result;
+    if (!result) return;
+    const profile = loadProfile();
+    Object.assign(profile, { points: result.rank.after, games: profile.games + 1 });
+    saveProfile(profile);
+    const me = result.standings.find((x) => x.seat === 0)!;
+    void music.sting(me.place <= 3 ? 'win' : 'lose');
+    overlay.showResults(result.standings, cast, () => void startOnline(m.format), () => void showHome(), result.rank);
+  };
+  director = new Director(null, built.stage, overlay, cast, built.moments, finish, net, m.seats.map((s) => !s.bot));
+  const leave = (note: string) => {
+    director?.leaveTable();
+    onlineGame = false;
+    net.handler = lobbyHandler;
+    void showHome().then(() => overlay.toast(note));
+  };
+  overlay.onQuit = () => leave('已离开牌桌：剩下的手牌会自动过牌或弃牌，段位分照常结算。');
+  overlay.spectateAction = '离开牌桌';
+  overlay.onSkip = () => leave('名次已经确定，段位分会在这局结束时结算。');
+  void director.run();
+  // replay what arrived while the table was loading
+  const early = onlineBuffer;
+  onlineBuffer = null;
+  for (const x of early) net.handler(x);
 }
 
 async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
@@ -202,9 +306,39 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
   const seed = seedParam !== null ? Number(seedParam) >>> 0 : (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
   game = new Game(engine, format, difficulty, seed);
   const cast: Character[] = game.roster.map(characterFor);
+  const { stage: st, moments } = await buildTable(cast, game.roster);
+  const g = game;
+  director = new Director(g, st, overlay, cast, moments, () => {
+    applySettings();
+    const standings = g.standings();
+    let rank: { before: number; after: number } | undefined;
+    if (ranked) {
+      const profile = loadProfile();
+      const me = standings.find((s) => s.seat === 0)!;
+      let pts = 0;
+      for (let p = me.place; p <= me.placeTo; p++) pts += PLACE_POINTS[p - 1] ?? 0;
+      pts /= me.placeTo - me.place + 1;
+      rank = { before: profile.points, after: Math.max(0, profile.points + Math.round(pts)) };
+      profile.points = rank.after;
+      profile.games += 1;
+      saveProfile(profile);
+    }
+    const me = standings.find((s) => s.seat === 0)!;
+    void music.sting(me.place <= 3 ? 'win' : 'lose');
+    overlay.showResults(standings, cast, () => void start(format, difficulty, ranked), () => void showHome(), rank);
+  });
+  overlay.onQuit = () => void showHome();
+  overlay.spectateAction = '直接看结果';
+  overlay.onSkip = () => director?.skipToEnd();
+  void director.run();
+}
+
+/** Loads art for the cast, builds the table scene and its big moments. looks: art per seat (-1 = you). */
+async function buildTable(cast: Character[], looks: number[]) {
+  overlay.loading(true);
   const [bg, ...poses] = await Promise.all([
     loadBackground('table', { x: 960, y: 330 }),
-    ...game.roster.map((r, i) => loadPoses(characterId(r), cast[i])),
+    ...looks.map((r, i) => loadPoses(characterId(r), cast[i])),
   ]);
   music.play('table');
   stage = new TableStage(cast, poses as Record<Pose, Texture>[], bg, { camera, post, particles, screen });
@@ -231,31 +365,9 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
     for (const p of poses as Record<Pose, Texture>[]) out.push({ idle: await shot(p.idle), win: await shot(p.win) });
     overlay.portraits = out;
   })();
-  const g = game;
   const moments = new Moments({ stage, camera, post, particles, screen });
-  if (debug) Object.assign(debug, { moments, stage }); // lets a test replay any moment (royal flush etc.)
-  director = new Director(g, stage, overlay, cast, moments, () => {
-    applySettings();
-    const standings = g.standings();
-    let rank: { before: number; after: number } | undefined;
-    if (ranked) {
-      const profile = loadProfile();
-      const me = standings.find((s) => s.seat === 0)!;
-      let pts = 0;
-      for (let p = me.place; p <= me.placeTo; p++) pts += PLACE_POINTS[p - 1] ?? 0;
-      pts /= me.placeTo - me.place + 1;
-      rank = { before: profile.points, after: Math.max(0, profile.points + Math.round(pts)) };
-      profile.points = rank.after;
-      profile.games += 1;
-      saveProfile(profile);
-    }
-    const me = standings.find((s) => s.seat === 0)!;
-    void music.sting(me.place <= 3 ? 'win' : 'lose');
-    overlay.showResults(standings, cast, () => void start(format, difficulty, ranked), () => void showHome(), rank);
-  });
-  overlay.onQuit = () => void showHome();
-  overlay.onSkip = () => director?.skipToEnd();
-  void director.run();
+  if (debug) Object.assign(debug, { moments, stage, net }); // lets a test replay any moment (royal flush etc.)
+  return { stage, moments };
 }
 
 void showHome();
