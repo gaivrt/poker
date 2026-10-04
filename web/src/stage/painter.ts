@@ -235,7 +235,7 @@ export function paintTableMask(w: number, h: number): HTMLCanvasElement {
 
 /** The table seen from the player's seat: black leather rail with a gold inlay,
  *  emerald felt lit by a spotlight over the board, a gilded betting line. */
-export function paintTable(w: number, h: number): HTMLCanvasElement {
+export function paintTable(w: number, h: number, plain = false): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const { cx, cy, rx, ry } = TABLE;
   const ell = (dx: number, dy: number, a0 = 0, a1 = Math.PI * 2, oy = 0) => {
@@ -305,6 +305,9 @@ export function paintTable(w: number, h: number): HTMLCanvasElement {
   g.stroke();
   g.filter = 'none';
   g.restore();
+
+  // the painting guide (docs/11 §4.3) leaves out the printed marks
+  if (plain) return c;
 
   // gilded betting line, double
   g.strokeStyle = rgba(PAL.beige, 0.55);

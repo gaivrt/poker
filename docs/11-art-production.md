@@ -146,22 +146,26 @@ Anime background art for a game, wide 16:9. A quiet corner of an exclusive card 
 Dark warm greys and browns, very low saturation, small warm highlights only, shallow depth of field. No people, no text, no signs, no money.
 ```
 
-### 4.3 牌桌 `table-top`（16:9，照底稿重画）
+### 4.3 牌桌 `table-top`（16:9，在底稿上加材质）
 
-代码画的桌子没有质感，桌子也改成插画。桌子的形状必须和座位、公共牌、名牌的坐标对齐，所以**不从零生成，而是上传构图底稿重画**：
+代码画的桌子没有质感，桌子也改成插画。桌子的形状必须和座位、公共牌、名牌的坐标对齐，所以**不从零生成，而是在底稿上改**：
 
-1. 下载底稿 `art-src/guides/table-guide.png`（现在的背景加上精确位置的桌子色块；换了背景就运行 `cd web && node tools/table-guide.mjs` 重新导出）。
+1. 下载底稿 `art-src/guides/table-guide.png`：现在的背景加上游戏里代码画的桌子（去掉了字和线），位置和形状就是游戏里的样子。
 2. 上传底稿，粘贴下面的说明。
 3. 交回整张图（背景也在里面没关系），代码按桌子的外沿椭圆自动抠出来。**唯一的要求是桌子外沿的轮廓不要变**，变了会露出背景或者切掉桌沿。
 
+v1 的教训：说"Repaint"，Gemini 会另画一张俯视的小桌子，还自己加上印刷线、牌框、筹码槽和杯托。所以要说"Edit"，强调我们就坐在桌边（近处的桌沿在画面外），并逐个点名不要的东西。
+
 ```
-Repaint the attached image. Keep the camera, the perspective and the room in the background exactly as they are. Repaint ONLY the poker table at the bottom of the image (the dark curved rail and the green oval surface inside it) as a luxurious, high-end poker table, in the same anime background art style as the room. Keep the table's outline, size and position exactly the same: the outer edge of the rail must stay where it is.
+Edit the attached image. Do not change the composition at all: same camera, same perspective, same room, and the table keeps exactly its current shape, size and position. Only improve the MATERIALS and LIGHTING of the table so it looks like a luxurious, high-end poker table, painted in the same anime background art style as the room.
 
-Materials: a thick padded rail of dark espresso-brown leather with fine stitching and soft glossy highlights along its rounded top edge; a thin polished brass inlay between the rail and the playing surface; the playing surface in deep dark-green wool felt with a visible fine fabric texture.
+We are sitting at this table: its near side is below the bottom edge of the image and must not be visible. The table is very large and runs off the left, right and bottom edges of the image. The curved dark band is the far rail; keep its curve exactly where it is.
 
-Lighting: warm light from the chandelier makes a soft oval pool of light in the middle of the felt, falling off to dark toward the edges; the rail casts a soft shadow onto the edge of the felt. Rich material detail, painted rather than photorealistic.
+Materials: the rail is padded black leather with fine stitching and soft glossy highlights along its rounded top; a thin polished brass inlay runs between the rail and the playing surface; the playing surface is deep dark-green wool felt with a visible fine fabric texture.
 
-The table is empty: no cards, no chips, no text, no logos, no printed lines, no cup holders. Same 16:9 framing.
+Lighting: warm light from the chandelier makes a soft oval pool of light in the middle of the felt, falling off to dark toward the edges; the rail casts a soft shadow onto the edge of the felt. Painted, not photorealistic, not a 3D render, no varnished wood.
+
+Keep the felt completely plain: no printed lines, no betting lines, no card boxes, no dealer tray, no chip rack, no cup holders, no cards, no chips, no text, no logos. Same 16:9 framing.
 ```
 
 ## 5. 其余 5 个角色（凛定稿后再做）
