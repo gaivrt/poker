@@ -9,6 +9,8 @@ const TOKEN_KEY = 'poker.online.token';
 export function serverUrl(): string | null {
   const param = new URLSearchParams(location.search).get('server');
   if (param) return param;
+  // Builds without a server (the single-file demo page) set VITE_OFFLINE=1.
+  if (import.meta.env.VITE_OFFLINE === '1') return null;
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
   // vite dev (5173) and preview (4173): the game server runs next to it on 8787
   if (location.port === '5173' || location.port === '4173') return `ws://${location.hostname}:8787/ws`;
