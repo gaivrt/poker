@@ -7,7 +7,7 @@ import { Expression } from '../engine';
 import { type Face, makeSticker } from '../fx/stickers';
 import { CardSprite } from '../table/CardSprite';
 import { FONT, FONT_BRUSH, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
-import { ease, tween, wait } from '../tween';
+import { animate, ease, tween, wait } from '../tween';
 import { type Pose, paintGlow } from './painter';
 
 let glowTex: Texture | null = null;
@@ -234,6 +234,55 @@ export class Seat extends Container {
     g.fill({ color: 0xff7a2f, alpha: 0.85 * flick });
   }
 
+  /** M10: she folded to a bluff that was then shown. The plate cracks and she reacts. */
+  fooled() {
+    const pw = this.isHero ? 210 : 190, ph = 62;
+    const crack = new Graphics();
+    let x = -pw * 0.1, y = -ph / 2;
+    crack.moveTo(x, y);
+    for (let i = 1; i <= 6; i++) {
+      x += (Math.random() - 0.4) * 22;
+      y = -ph / 2 + (ph * i) / 6;
+      crack.lineTo(x, y);
+      if (i === 3) crack.moveTo(x, y).lineTo(x + 26, y - 10).moveTo(x, y);
+    }
+    crack.stroke({ width: 3, color: 0x5b2324, alpha: 0.85 });
+    crack.label = 'crack';
+    this.plate.addChild(crack);
+    const x0 = this.plate.x;
+    void animate(320, (p) => (this.plate.x = x0 + Math.sin(p * Math.PI * 8) * 7 * (1 - p)), ease.linear);
+    if (!this.isHero) this.setPose(Math.random() < 0.5 ? 'angry' : 'shock');
+    const t = new Text({ text: '被骗了！', style: { fontFamily: FONT_DISPLAY, fontSize: 28, fill: 0xffffff, stroke: { color: 0x7a2a8f, width: 6 } } });
+    t.anchor.set(0.5);
+    t.position.set(this.spot.plate.x, this.spot.plate.y - 50);
+    t.rotation = (Math.random() - 0.5) * 0.3;
+    t.scale.set(0.3);
+    this.front.addChild(t);
+    void tween(t.scale, { x: 1, y: 1 }, 240, ease.outBack)
+      .then(() => wait(1300))
+      .then(() => tween(t, { alpha: 0, y: t.y - 20 }, 300))
+      .then(() => t.destroy());
+  }
+
+  shakePlate() {
+    const x0 = this.spot.plate.x;
+    void animate(420, (p) => (this.plate.x = x0 + Math.sin(p * Math.PI * 10) * 9 * (1 - p)), ease.linear);
+  }
+
+  /** M14: the name plate catches fire and burns away. Resolves with where the ash should fly from. */
+  async burnAway(): Promise<Point> {
+    this.setBurning(true);
+    await tween(this.plate.scale, { x: 1.06, y: 1.06 }, 200, ease.outBack);
+    await wait(350);
+    this.setBurning(false);
+    const at = { ...this.spot.plate };
+    void tween(this.plate.scale, { x: 0.6, y: 0.2 }, 260, ease.inCubic);
+    await tween(this.plate, { alpha: 0 }, 260);
+    for (const c of this.cards) c.visible = false;
+    this.betBox.visible = false;
+    return at;
+  }
+
   /** Showdown spotlight: everyone but the player being shown drops into shadow. */
   dim(on: boolean) {
     this.dimmed = on;
@@ -333,6 +382,7 @@ export class Seat extends Container {
   newHand(stack: number) {
     this.setStack(stack);
     this.setBet(0);
+    this.plate.getChildrenByLabel('crack').forEach((c) => c.destroy());
     this.setActive(false);
     this.folded = false;
     this.allIn = false;

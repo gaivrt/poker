@@ -142,4 +142,16 @@ export class Particles {
       this.spawn(this.goldTex, x, y, { vx: Math.cos(a) * v, vy: Math.sin(a) * v - 200, g: 1400, life: 0.5 + Math.random() * 0.4, scale: 0.15 + Math.random() * 0.2, add: true });
     }
   }
+
+  /** Ash and embers drifting up and away (a burnt name plate). */
+  ash(x: number, y: number, w = 200, n = 40) {
+    for (let i = 0; i < n; i++) {
+      const ember = i % 4 === 0;
+      this.spawn(this.glowTex, x + (Math.random() - 0.5) * w, y + (Math.random() - 0.5) * 40, {
+        vx: 60 + Math.random() * 160, vy: -60 - Math.random() * 140, g: -20, vr: (Math.random() - 0.5) * 4,
+        life: 1 + Math.random() * 0.8, scale: ember ? 0.12 + Math.random() * 0.1 : 0.1 + Math.random() * 0.15,
+        tint: ember ? 0xff8a3d : 0x3a2a2a, add: ember,
+      });
+    }
+  }
 }

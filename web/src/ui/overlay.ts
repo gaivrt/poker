@@ -1,5 +1,6 @@
 // HTML overlay on top of the canvas: menus, HUD, action panel, results.
 // It lives in the same 1920x1080 design space as the canvas (scaled together).
+import { sfx } from '../audio/sfx';
 import type { Difficulty, Format, Legal, SignalKindName, Standing } from '../engine';
 import { CAST, type Character, GESTURE_LABEL, LINE_LABEL, STICKER_LABEL } from '../characters';
 import type { Quality } from '../fx/post';
@@ -82,6 +83,8 @@ export class Overlay {
   readonly root: HTMLElement;
   readonly settings = loadSettings();
   onSettings: () => void = () => {};
+  /** M15: the action clock is running low ('low') or eating the time bank ('bank'). */
+  onClock: (mode: 'off' | 'low' | 'bank') => void = () => {};
   onQuit: () => void = () => {};
   onSkip: () => void = () => {};
   /** Sends table talk; returns false when it was refused (said too much this street). */
@@ -289,6 +292,31 @@ export class Overlay {
     if (this.notes.classList.contains('hidden')) return;
     this.notes.innerHTML = `<div class="notes-head"><b>读人笔记</b><button class="x">关闭</button></div><div class="notes-body">${this.onNotes()}</div>`;
     (this.notes.querySelector('.x') as HTMLButtonElement).onclick = () => this.notes.classList.add('hidden');
+  }
+
+  /** M16: a collectible "tell card" flips in at the side, then flies into the notes button. */
+  tellCard(name: string, color: number, text: string) {
+    const card = el('div', 'tell-card');
+    card.style.setProperty('--c', hex(color));
+    card.innerHTML = `<div class="inner"><div class="back">破绽</div><div class="front">
+      <span class="ava">${esc(name.slice(0, 1))}</span><b>发现破绽！</b><em>${esc(name)}</em><p>${esc(text)}</p><i class="shine"></i></div></div>`;
+    this.root.append(card);
+    sfx.play('chime', 0.7);
+    // fly to the notes button after a moment to read it
+    window.setTimeout(() => {
+      const btn = this.topRight.querySelector('button') as HTMLElement | null;
+      if (btn && !this.topRight.classList.contains('hidden')) {
+        const b = btn.getBoundingClientRect();
+        const c = card.getBoundingClientRect();
+        const s = c.width / card.offsetWidth || 1; // the #ui scale
+        card.style.setProperty('--dx', `${(b.left + b.width / 2 - (c.left + c.width / 2)) / s}px`);
+        card.style.setProperty('--dy', `${(b.top + b.height / 2 - (c.top + c.height / 2)) / s}px`);
+        btn.classList.add('ping');
+        window.setTimeout(() => btn.classList.remove('ping'), 1400);
+      }
+      card.classList.add('away');
+      window.setTimeout(() => card.remove(), 700);
+    }, 3200);
   }
 
   toast(text: string) {
@@ -625,18 +653,36 @@ export class Overlay {
 
       // Action clock: per-action time, then the game's time bank, then check/fold.
       const clockEl = this.panel.querySelector('.clock') as HTMLElement;
+      let mode: 'off' | 'low' | 'bank' = 'off';
+      let lastSec = -1;
       const tickClock = () => {
         const used = performance.now() - started;
         const left = clock.perActionMs - used;
         const bankLeft = clock.bankMs + Math.min(0, left);
+        let next: typeof mode = 'off';
         if (left > 0) {
-          clockEl.textContent = `⏱ ${Math.ceil(left / 1000)} 秒`;
+          const sec = Math.ceil(left / 1000);
+          clockEl.innerHTML = `⏱ <b>${sec}</b> 秒`;
           clockEl.className = `clock${left < 5000 ? ' low' : ''}`;
+          if (left < 5000) {
+            next = 'low';
+            if (sec !== lastSec) sfx.play('heartbeat', 0.9);
+          }
+          lastSec = sec;
         } else if (bankLeft > 0) {
-          clockEl.textContent = `时间银行 ${Math.ceil(bankLeft / 1000)} 秒`;
+          const half = Math.ceil(bankLeft / 500);
+          clockEl.innerHTML = `时间银行 <b>${Math.ceil(bankLeft / 1000)}</b> 秒`;
           clockEl.className = 'clock bank';
+          next = 'bank';
+          if (half !== lastSec) sfx.play('tick', 1.4);
+          lastSec = half;
         } else {
           finish(legal.canCheck ? { type: 'check', to: 0, thinkMs: 0 } : { type: 'fold', to: 0, thinkMs: 0 });
+          return;
+        }
+        if (next !== mode) {
+          mode = next;
+          this.onClock(mode);
         }
       };
       tickClock();
@@ -656,6 +702,8 @@ export class Overlay {
   }
 
   private resolve(c: Choice | null) {
+    window.clearInterval(this.clockTimer);
+    this.onClock('off');
     this.panel.classList.add('hidden');
     if (!this.spectate.classList.contains('hidden')) this.pre.classList.add('hidden');
     else if (!this.hud.classList.contains('hidden')) this.pre.classList.remove('hidden');
@@ -671,7 +719,11 @@ export class Overlay {
     if (this.pending) this.resolve(null);
   }
 
-  // ---------- results ----------
+  // ---------- results (M17) ----------
+  /** Portraits per seat (data URLs from the canvas): the resting pose and the victory pose. */
+  portraits: { idle: string; win: string }[] = [];
+
+  /** The final ranking: cards turn over from last place to first, then the rank points roll in. */
   showResults(standings: Standing[], cast: Character[], onAgain: () => void, onMenu: () => void, rank?: { before: number; after: number }) {
     this.panel.classList.add('hidden');
     this.spectate.classList.add('hidden');
@@ -681,48 +733,128 @@ export class Overlay {
       for (let p = s.place; p <= s.placeTo; p++) sum += PLACE_POINTS[p - 1] ?? 0;
       return sum / (s.placeTo - s.place + 1);
     };
-    const rows = standings
-      .map((s, i) => {
-        const c = cast[s.seat];
-        const pts = points(s);
-        const place = s.place === s.placeTo ? `${s.place}` : `${s.place}-${s.placeTo}`;
-        return `<tr class="${s.seat === 0 ? 'me' : ''}" style="--d:${i * 90}ms">
-          <td class="place p${s.place}">${place}</td>
-          <td><span class="dot" style="background:${hex(c.color)}"></span>${c.name}<small>${c.style}</small></td>
-          <td class="num">${fmt(s.chips)}</td>
-          ${rank ? `<td class="num ${pts > 0 ? 'up' : pts < 0 ? 'down' : ''}">${pts > 0 ? '+' : ''}${pts}</td>` : ''}</tr>`;
+    const byPlace = [...standings].sort((a, b) => a.place - b.place || a.seat - b.seat);
+    // podium order on screen: 6 4 2 1 3 5 (first place in the middle)
+    const slots = [5, 3, 1, 0, 2, 4].filter((i) => i < byPlace.length);
+    const me = standings.find((s) => s.seat === 0)!;
+    const cards = slots
+      .map((i) => {
+        const st = byPlace[i];
+        const c = cast[st.seat];
+        const first = i === 0;
+        const pic = this.portraits[st.seat]?.[first ? 'win' : 'idle'];
+        const pts = points(st);
+        const place = st.place === st.placeTo ? `${st.place}` : `${st.place}-${st.placeTo}`;
+        return `<div class="rc${first ? ' first' : ''}${st.seat === 0 ? ' me' : ''}" data-i="${i}" style="--c:${hex(c.color)}">
+          <div class="inner"><div class="back"><span>?</span></div><div class="front">
+            <div class="pl">${place}<small>${first ? 'ST' : st.place === 2 ? 'ND' : st.place === 3 ? 'RD' : 'TH'}</small></div>
+            ${pic ? `<img src="${pic}" alt="">` : `<span class="ava">${esc(c.name.slice(0, 1))}</span>`}
+            <div class="info"><b>${esc(c.name)}${st.seat === 0 && c.name !== '你' ? '<em>你</em>' : ''}</b>
+            <span class="chips">${fmt(st.chips)}${rank ? ` · <span class="pts ${pts > 0 ? 'up' : pts < 0 ? 'down' : ''}">${pts > 0 ? '+' : ''}${pts}</span>` : ''}</span></div>
+          </div></div></div>`;
       })
       .join('');
-    const me = standings.find((s) => s.seat === 0)!;
     let rankHtml = '';
     if (rank) {
       const a = tierOf(rank.before);
       const b = tierOf(rank.after);
-      const d = rank.after - rank.before;
-      const moved = b.index > a.index ? `<em class="promo">升段！${a.name} → ${b.name}</em>` : b.index < a.index ? `<em class="demo">降至 ${b.name}</em>` : '';
-      rankHtml = `<div class="rankbox"><span class="tier">${b.name}</span>
-        <span class="pts">${rank.after} 分 <b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${d}</b></span>
-        <span class="prog"><i style="width:${Math.round(a.index === b.index ? a.progress * 100 : 0)}%" data-to="${Math.round(b.progress * 100)}"></i></span>
-        ${moved}${b.next ? `<small>距 ${b.next} 还差 ${b.toNext} 分</small>` : `<small>最高段位 ${TIERS[TIERS.length - 1].name}</small>`}</div>`;
+      rankHtml = `<div class="rankbox hidden">
+        <span class="badge old">${a.name}</span>${b.index !== a.index ? `<span class="badge new">${b.name}</span>` : ''}
+        <span class="pts"><span class="num">${rank.before}</span> 分 <b class="${rank.after > rank.before ? 'up' : rank.after < rank.before ? 'down' : ''}">${rank.after >= rank.before ? '+' : ''}${rank.after - rank.before}</b></span>
+        <span class="prog"><i style="width:${Math.round(a.progress * 100)}%"></i></span>
+        <small>${b.index > a.index ? `升段！${a.name} → ${b.name}` : b.index < a.index ? `降至 ${b.name}` : b.next ? `距 ${b.next} 还差 ${b.toNext} 分` : `最高段位 ${TIERS[TIERS.length - 1].name}`}</small></div>`;
     }
-    this.modal.className = 'modal';
+    this.modal.className = 'modal finale';
     this.modal.innerHTML = `
-      <div class="card results">
-        <div class="place-big p${me.place}">${me.place === 1 ? '第 1 名！' : `第 ${me.place} 名`}</div>
+      <div class="fin">
+        <div class="fin-title">最终排名</div>
+        <div class="cards">${cards}</div>
+        <div class="fin-me">${me.place === 1 ? '你是第 1 名！' : `你获得第 ${me.place} 名`}</div>
         ${rankHtml}
-        <table><thead><tr><th>名次</th><th>玩家</th><th>筹码</th>${rank ? '<th>段位分</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>
-        <div class="row"><button class="ghost menu">回到主页</button><button class="primary again">再来一局</button></div>
+        <div class="row hidden"><button class="ghost menu">回到主页</button><button class="primary again">再来一局</button></div>
+        <div class="confetti"></div>
+        <div class="skip-hint">点击跳过</div>
       </div>`;
-    // Let the progress bar fill after the card lands.
-    const bar = this.modal.querySelector('.rankbox .prog i') as HTMLElement | null;
-    if (bar) setTimeout(() => (bar.style.width = `${bar.dataset.to}%`), 500);
-    (this.modal.querySelector('.again') as HTMLButtonElement).onclick = () => {
+    const q = <T extends HTMLElement>(sel: string) => this.modal.querySelector(sel) as T;
+    const cardEl = (i: number) => this.modal.querySelector(`.rc[data-i="${i}"]`) as HTMLElement | null;
+
+    // the timeline (every step can be fast-forwarded by a click)
+    const steps: [number, () => void][] = [];
+    let t = 400;
+    for (let i = byPlace.length - 1; i >= 0; i--) {
+      const first = i === 0;
+      if (first) t += 600; // a breath before the winner
+      steps.push([t, () => {
+        cardEl(i)?.classList.add('open');
+        sfx.play('flip', first ? 1 : 0.7);
+        if (first) {
+          sfx.play('impact', 0.8);
+          sfx.play('cheer', 0.9);
+          this.modal.querySelector('.fin')!.classList.add('crowned');
+          const box = q<HTMLElement>('.confetti');
+          const colors = ['#ffd36b', '#f69375', '#e04fb0', '#52c0cf', '#b9a7f0', '#fff'];
+          box.innerHTML = Array.from({ length: 70 }, (_, k) =>
+            `<i style="left:${Math.random() * 100}%;background:${colors[k % colors.length]};animation-delay:${Math.random() * 0.8}s;animation-duration:${2.2 + Math.random() * 1.6}s;transform:rotate(${Math.random() * 360}deg)"></i>`).join('');
+        }
+      }]);
+      t += first ? 900 : 520 + (5 - i) * 40;
+    }
+    if (rank) {
+      steps.push([t, () => q<HTMLElement>('.rankbox').classList.remove('hidden')]);
+      steps.push([t + 300, () => this.rollPoints(rank)]);
+      t += 1700;
+    }
+    steps.push([t, () => {
+      q<HTMLElement>('.row').classList.remove('hidden');
+      q<HTMLElement>('.skip-hint').remove();
+    }]);
+    const timers = steps.map(([ms, fn]) => window.setTimeout(fn, ms));
+    const skip = (e: Event) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      timers.forEach((id) => window.clearTimeout(id));
+      this.modal.classList.add('instant');
+      for (const [, fn] of steps) fn();
+      this.modal.removeEventListener('pointerdown', skip);
+    };
+    this.modal.addEventListener('pointerdown', skip);
+    q<HTMLButtonElement>('.again').onclick = () => {
       this.closeModal();
       onAgain();
     };
-    (this.modal.querySelector('.menu') as HTMLButtonElement).onclick = () => {
+    q<HTMLButtonElement>('.menu').onclick = () => {
       this.closeModal();
       onMenu();
     };
+  }
+
+  /** Rank points count up (or down); a promotion shatters the old badge and forges the new one. */
+  private rollPoints(rank: { before: number; after: number }) {
+    const box = this.modal.querySelector('.rankbox') as HTMLElement | null;
+    if (!box || box.dataset.rolled) return;
+    box.dataset.rolled = '1';
+    const num = box.querySelector('.num') as HTMLElement;
+    const bar = box.querySelector('.prog i') as HTMLElement;
+    const a = tierOf(rank.before);
+    const b = tierOf(rank.after);
+    const instant = this.modal.classList.contains('instant');
+    const ms = instant ? 0 : 1100;
+    const t0 = performance.now();
+    const step = () => {
+      const p = ms ? Math.min(1, (performance.now() - t0) / ms) : 1;
+      const v = Math.round(rank.before + (rank.after - rank.before) * (1 - Math.pow(1 - p, 3)));
+      num.textContent = String(v);
+      const tv = tierOf(v);
+      bar.style.width = `${Math.round((tv.index === a.index ? tv.progress : tv.index > a.index ? 1 : 0) * 100)}%`;
+      if (p < 1) requestAnimationFrame(step);
+      else {
+        bar.style.width = `${Math.round(b.progress * 100)}%`;
+        if (b.index !== a.index) {
+          box.classList.add(b.index > a.index ? 'promoted' : 'demoted');
+          sfx.play(b.index > a.index ? 'glass' : 'thud', 0.8);
+          if (b.index > a.index) window.setTimeout(() => sfx.play('bell', 0.9), instant ? 0 : 350);
+        }
+      }
+    };
+    step();
   }
 }

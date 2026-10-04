@@ -3,7 +3,7 @@
 import { artUrl } from '../stage/assets';
 
 export type SfxName =
-  | 'deal' | 'flip' | 'chip' | 'slide' | 'thud' | 'whoosh' | 'heartbeat' | 'impact' | 'chime' | 'riser' | 'tick' | 'cheer' | 'thunder' | 'bell';
+  | 'deal' | 'flip' | 'chip' | 'slide' | 'thud' | 'whoosh' | 'heartbeat' | 'impact' | 'chime' | 'riser' | 'tick' | 'cheer' | 'thunder' | 'bell' | 'glass' | 'ooh' | 'crack' | 'whoosh2';
 
 class Sfx {
   private ctx: AudioContext | null = null;
@@ -119,6 +119,16 @@ class Sfx {
       case 'tick': this.tone(ctx, out, 2000, 1800, 0.03, 'square', 0.12); break;
       case 'thunder': this.burst(ctx, out, 1.1, 'lowpass', 2400, 0.8, 0.7, 120); this.tone(ctx, out, 60, 28, 0.9, 'sawtooth', 0.35); break;
       case 'bell': [880, 1320, 2200, 3300].forEach((f, i) => this.tone(ctx, out, f, f * 0.998, 1.6 - i * 0.3, 'sine', 0.3 / (i + 1))); break;
+      case 'glass':
+        this.burst(ctx, out, 0.5, 'highpass', 4500, 0.6, 1);
+        [3100, 4200, 5300, 6100].forEach((f, i) => this.tone(ctx, out, f, f * 0.97, 0.35, 'triangle', 0.12, i * 0.03));
+        break;
+      case 'ooh': // a crowd going "oh~": a few voices gliding down
+        [210, 260, 320, 390].forEach((f, i) => this.tone(ctx, out, f * 1.25, f, 0.9, 'sawtooth', 0.05, i * 0.02));
+        this.burst(ctx, out, 0.9, 'bandpass', 700, 0.12, 1, 400);
+        break;
+      case 'crack': this.burst(ctx, out, 0.12, 'highpass', 1800, 0.8); this.tone(ctx, out, 400, 90, 0.2, 'square', 0.15); break;
+      case 'whoosh2': this.burst(ctx, out, 0.6, 'bandpass', 2400, 0.35, 1.2, 300); break;
       case 'cheer': this.burst(ctx, out, 1.4, 'bandpass', 1500, 0.35, 0.5, 900); break;
     }
   }

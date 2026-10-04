@@ -1,5 +1,5 @@
 import 'pixi.js/unsafe-eval'; // Pixi without eval(): runs under strict content security policies
-import { Application, Container, type Texture } from 'pixi.js';
+import { Application, Container, Sprite, type Texture } from 'pixi.js';
 import './style.css';
 import { sfx } from './audio/sfx';
 import { CAST, type Character, HERO, characterFor } from './characters';
@@ -66,6 +66,7 @@ fit();
 const overlay = new Overlay(uiRoot);
 const camera = new Camera(world, null);
 const post = new Post(world, worldFx, screen);
+const persistentScreen = new Set(screen.children); // the vignettes and the flash stay between games
 const engine = await loadEngine();
 
 // Pictures of the stickers for the talk-panel buttons, rendered once by the canvas.
@@ -87,12 +88,14 @@ const speedOverride = new URLSearchParams(location.search).get('speed');
 // ?debug exposes the clock so a test can fast-forward to the hand it wants to film.
 const debug: Record<string, unknown> | null = new URLSearchParams(location.search).has('debug') ? { timing } : null;
 if (debug) (window as unknown as { __poker: unknown }).__poker = debug;
+if (debug) Object.assign(debug, { overlay, post });
 function applySettings() {
   timing.scale = speedOverride !== null ? Number(speedOverride) : overlay.settings.fast ? 0.5 : 1;
   sfx.muted = !overlay.settings.sound;
   post.setQuality(overlay.settings.quality);
 }
 overlay.onSettings = applySettings;
+overlay.onClock = (mode) => post.pressure(mode);
 applySettings();
 window.addEventListener('pointerdown', () => sfx.unlock(), { once: false });
 
@@ -116,7 +119,7 @@ function teardown() {
     oldLobby?.dispose();
     oldGame?.dispose();
   }, 4000);
-  for (const c of [...screen.children]) if (c !== screen.children[0] && c !== screen.children[1]) c.removeFromParent();
+  for (const c of [...screen.children]) if (!persistentScreen.has(c)) c.removeFromParent();
   worldFx.removeChildren();
   camera.look = { x: 960, y: 540 };
   camera.zoom = 1;
@@ -160,6 +163,24 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
   world.addChild(worldFx);
   overlay.loading(false);
   overlay.setInGame(true);
+  // Portraits for the final results cards, rendered in the background.
+  overlay.portraits = [];
+  void (async () => {
+    const shot = async (tex: Texture) => {
+      const sp = new Sprite(tex);
+      sp.scale.set(320 / tex.height);
+      try {
+        return await app.renderer.extract.base64({ target: sp, resolution: 1 });
+      } catch {
+        return '';
+      } finally {
+        sp.destroy();
+      }
+    };
+    const out: { idle: string; win: string }[] = [];
+    for (const p of poses as Record<Pose, Texture>[]) out.push({ idle: await shot(p.idle), win: await shot(p.win) });
+    overlay.portraits = out;
+  })();
   const g = game;
   const moments = new Moments({ stage, camera, post, particles, screen });
   if (debug) Object.assign(debug, { moments, stage }); // lets a test replay any moment (royal flush etc.)

@@ -58,6 +58,11 @@ export class Director {
   private openedShowdown = false;               // "胜负揭晓" already stamped this hand
   private ahead: GameEvent[] = [];              // events after the one being played (lookahead)
   private consumed = new Set<GameEvent>();      // events already played as part of a bigger moment
+  private faceoff = new Set<number>();          // seats in this hand's all-in face-off
+  private lastAggr: { seat: number; street: string; big: boolean } | null = null; // the last bet or raise this hand
+  private foldedAfter = new Set<number>();      // who folded since that bet
+  private foldedAll = new Set<number>();
+  private strengthOf: Record<number, StrengthName> = {};
 
   constructor(
     private game: Game,
@@ -195,7 +200,7 @@ export class Director {
     rec.count += 1;
     tells[key] = rec;
     saveTells(tells);
-    if (rec.count === TELL_UNLOCK) this.ui.toast(`发现破绽！${rec.character}：${rec.text}`);
+    if (rec.count === TELL_UNLOCK) this.ui.tellCard(rec.character, this.cast[e.seat].color, rec.text);
   }
 
   private addNote(seat: number, cards: string[], handName: string | undefined, strength: StrengthName | undefined, voluntary: boolean) {
@@ -256,19 +261,32 @@ export class Director {
     return !!best && best.some((c) => hole.includes(c));
   }
 
-  /** At most one big moment per hand, the grandest one; the others ride along as tags (docs/08 §4 M13). */
+  /** At most one big moment per hand, the grandest one; the others ride along as tags (docs/08 §4 M13).
+   *  Order: 皇家同花顺 / 同花顺 > 逆转 > 本局主役 > 四条 > 抓诈 / 神跟注 > 葫芦. */
   private async bigMoment(e: Extract<GameEvent, { t: 'win' }>) {
     const cat = e.category ?? -1;
     const won = this.wonTotal[e.seat] ?? 0;
-    const mvp = won >= this.tableChips * 0.25;
+    const best = this.best[e.seat] ?? [];
     // A monster that is all board belongs to everyone: no fanfare for it.
     const name = this.usesHole(e.seat, this.best[e.seat]) ? (e.royal ? '皇家同花顺' : BIG_NAME[cat]) : undefined;
-    if (!name && !mvp) return;
-    if (this.pres === 'simple') return this.moments.quick(name ?? '本局主役', 0xffd36b);
-    const best = this.best[e.seat] ?? [];
-    if (e.royal || cat === STRAIGHT_FLUSH) return this.moments.bigHand(e.seat, cat, !!e.royal, best, mvp ? ['本局主役'] : []);
-    if (mvp) return this.moments.mvp(e.seat, won, name ? [name] : []);
-    return this.moments.bigHand(e.seat, cat, false, best);
+    const others = [...this.faceoff].filter((x) => x !== e.seat);
+    const comeback = this.faceoff.has(e.seat) && (this.equity[e.seat] ?? 100) < 25;
+    // Caught bluff: the river bettor (half the pot or more) showed a weak hand and lost to the one who called.
+    const ag = this.lastAggr;
+    const caught = !!ag && ag.street === 'river' && ag.big && ag.seat !== e.seat && this.strengthOf[ag.seat] === 'weak' && this.strengthOf[e.seat] !== undefined;
+    const god = caught && this.strengthOf[e.seat] !== 'strong';
+
+    const options: [string, (extras: string[]) => Promise<void>][] = [];
+    if (name && (e.royal || cat === STRAIGHT_FLUSH)) options.push([name, (x) => this.moments.bigHand(e.seat, cat, !!e.royal, best, x)]);
+    if (comeback) options.push(['逆转', (x) => this.moments.comeback(e.seat, others, x)]);
+    if (won >= this.tableChips * 0.25) options.push(['本局主役', (x) => this.moments.mvp(e.seat, won, x)]);
+    if (name && cat === QUADS) options.push([name, (x) => this.moments.bigHand(e.seat, cat, false, best, x)]);
+    if (caught) options.push([god ? '神跟注' : '抓到了', () => this.moments.caught(ag!.seat, e.seat, god)]);
+    if (name && cat === FULL_HOUSE) options.push([name, (x) => this.moments.bigHand(e.seat, cat, false, best, x)]);
+    if (!options.length) return;
+    if (this.pres === 'simple') return this.moments.quick(options[0][0], 0xffd36b);
+    const [, play] = options[0];
+    await play(options.slice(1).map(([label]) => label));
   }
 
   // ---------------- event playback ----------------
@@ -345,6 +363,11 @@ export class Director {
         this.wonTotal = {};
         this.reacted = false;
         this.openedShowdown = false;
+        this.faceoff.clear();
+        this.lastAggr = null;
+        this.foldedAfter.clear();
+        this.foldedAll.clear();
+        this.strengthOf = {};
         void this.bars?.dispose();
         this.bars = null;
         this.tableChips = e.stacks.reduce((a, b) => a + b, 0);
@@ -386,7 +409,13 @@ export class Director {
         s.setActive(false);
         const secs = e.thinkMs !== undefined ? ` ${(e.thinkMs / 1000).toFixed(1)}s` : '';
         const size = e.potPct ? ` ${e.potPct}%池` : '';
+        if (e.action === 'bet' || e.action === 'raise') {
+          this.lastAggr = { seat: e.seat, street: e.street, big: e.allIn || (e.potPct ?? 0) >= 50 };
+          this.foldedAfter.clear();
+        }
         if (e.action === 'fold') {
+          this.foldedAfter.add(e.seat);
+          this.foldedAll.add(e.seat);
           s.setFolded(true);
           s.setTag('弃牌', 0x9a94b8);
         } else if (e.action === 'check') {
@@ -459,6 +488,7 @@ export class Director {
           shows.forEach((x) => this.consumed.add(x));
           const eq = shows[shows.length - 1].equity ?? [];
           for (const q of eq) this.equity[q.seat] = q.pct;
+          shows.forEach((x) => this.faceoff.add(x.seat));
           this.bars = await this.moments.versus(shows.map((x) => ({ seat: x.seat, cards: x.cards })), eq, this.pres === 'full');
           for (const x of shows) {
             this.best[x.seat] = x.best;
@@ -499,6 +529,7 @@ export class Director {
         for (const h of e.hands) {
           T.seats[h.seat].showHand(h.hand, this.pres !== 'off');
           this.best[h.seat] = h.best;
+          this.strengthOf[h.seat] = h.strength;
           const cards = T.seats[h.seat].cards.map((c) => c.code ?? '').filter(Boolean);
           this.addNote(h.seat, cards, h.hand, h.strength, false);
         }
@@ -522,10 +553,20 @@ export class Director {
           s.cards[i].visible = true;
           await s.cards[i].flipTo(e.cards[0], 260);
         }
-        if (e.hand) s.showHand(e.hand);
-        const bluff = e.strength === 'weak';
-        T.showBanner(`${c.name} 亮牌了${bluff ? '：是诈唬！' : ''}`, e.cards.map(prettyCard).join(' '));
+        if (e.hand) s.showHand(e.hand, this.pres !== 'off');
+        const bluff = e.strength === 'weak' && e.cards.length === 2;
         if (e.cards.length === 2) this.addNote(e.seat, e.cards, e.hand, e.strength, true);
+        if (bluff && this.pres !== 'off') {
+          // M10: the ones who folded to her last bet find out they were had.
+          const victims = [...(this.lastAggr?.seat === e.seat ? this.foldedAfter : this.foldedAll)].filter((v) => v !== e.seat && !T.seats[v].out);
+          if (this.pres === 'full') await this.moments.bluff(e.seat, e.cards, victims);
+          else {
+            victims.forEach((v) => T.seats[v].fooled());
+            await this.moments.quick('BLUFF!', 0xe04fb0);
+          }
+          break;
+        }
+        T.showBanner(`${c.name} 亮牌了${bluff ? '：是诈唬！' : ''}`, e.cards.map(prettyCard).join(' '));
         await wait(1400);
         break;
       }
@@ -564,8 +605,8 @@ export class Director {
         break;
       case 'eliminated': {
         const place = e.place === e.placeTo ? `第 ${e.place} 名` : `并列第 ${e.place} 名`;
-        T.seats[e.seat].setOut(place);
         this.say(e.seat, this.cast[e.seat].lines.out, 1);
+        await this.moments.eliminate(e.seat, place, this.pres === 'full');
         if (e.seat === 0) {
           this.heroOut = true;
           this.ui.hideTalk();

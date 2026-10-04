@@ -11,6 +11,8 @@ export class Post {
   private grain = new NoiseFilter({ noise: 0.07, seed: Math.random() });
   private vignette: Sprite;
   private flashG = new Graphics().rect(0, 0, 1920, 1080).fill(0xffffff);
+  private red: Sprite;
+  private pressureMode: 'off' | 'low' | 'bank' = 'off';
   quality: Quality = 'high';
 
   constructor(
@@ -21,9 +23,16 @@ export class Post {
     this.vignette = new Sprite(Texture.from(paintVignette(1920, 1080)));
     this.vignette.alpha = 0.75;
     this.flashG.alpha = 0;
-    this.screen.addChild(this.vignette, this.flashG);
+    this.red = new Sprite(Texture.from(redEdge(1920, 1080)));
+    this.red.alpha = 0;
+    this.screen.addChild(this.vignette, this.red, this.flashG);
     Ticker.shared.add(() => {
       if (this.quality !== 'low') this.grain.seed = Math.random();
+      // time pressure: the red edge beats like a heart (faster in the time bank)
+      const t = performance.now() / (this.pressureMode === 'bank' ? 600 : 1000);
+      const beat = Math.max(0, Math.sin(t * Math.PI * 2)) ** 6;
+      const target = this.pressureMode === 'off' ? 0 : 0.55 + 0.45 * beat;
+      this.red.alpha += (target - this.red.alpha) * 0.25;
     });
     this.setQuality(this.quality);
   }
@@ -32,6 +41,11 @@ export class Post {
     this.quality = q;
     this.world.filters = q === 'low' ? [] : [this.grain];
     this.fxLayer.filters = q === 'high' ? [new AdvancedBloomFilter({ threshold: 0.45, bloomScale: 1.1, brightness: 1, blur: 6, quality: 4 })] : [];
+  }
+
+  /** M15: the clock is running out ('low') or eating the time bank ('bank'). */
+  pressure(mode: 'off' | 'low' | 'bank') {
+    this.pressureMode = mode;
   }
 
   /** Tighten (1) or relax (0) the vignette; used for heartbeats and suspense. */
@@ -59,4 +73,19 @@ export class Post {
     }, ease.linear);
     this.world.filters = base;
   }
+}
+
+/** A red edge for time pressure: reaches further in than the normal vignette. */
+function redEdge(w: number, h: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d')!;
+  const v = g.createRadialGradient(w / 2, h / 2, h * 0.28, w / 2, h / 2, w * 0.58);
+  v.addColorStop(0, 'rgba(210,20,45,0)');
+  v.addColorStop(0.5, 'rgba(210,20,45,0.28)');
+  v.addColorStop(1, 'rgba(170,10,30,0.95)');
+  g.fillStyle = v;
+  g.fillRect(0, 0, w, h);
+  return c;
 }

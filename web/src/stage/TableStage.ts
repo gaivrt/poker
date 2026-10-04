@@ -1,7 +1,7 @@
 // The first-person table (docs/07 §4, docs/08 §1): layered scene, board, pot and
 // the everyday moments M1–M4 (deal + squeeze, flop fan, turn/river suspense,
 // weighted bets). Big moments live in fx/ and director.ts.
-import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { sfx } from '../audio/sfx';
 import type { Character } from '../characters';
 import type { Camera } from '../fx/camera';
@@ -296,6 +296,23 @@ export class TableStage extends Container {
   cardSprites(codes: string[], seat = -1): CardSprite[] {
     const pool = [...this.board, ...(seat >= 0 ? this.seats[seat].cards : this.seats.flatMap((s) => s.cards))];
     return codes.map((code) => pool.find((c) => c.visible && c.code === code)).filter((c): c is CardSprite => !!c);
+  }
+
+  private gray: ColorMatrixFilter | null = null;
+
+  /** Drain the colour from everything but one player (null: colour back). */
+  drain(keep: number | null) {
+    if (!this.gray) {
+      this.gray = new ColorMatrixFilter();
+      this.gray.desaturate();
+    }
+    const f = keep === null ? [] : [this.gray];
+    for (const layer of [this.background, this.tableLayer, this.boardLayer]) layer.filters = f;
+    for (const s of this.seats) {
+      const ff = s.seat === keep ? [] : f;
+      s.filters = ff;
+      s.front.filters = ff;
+    }
   }
 
   /** Showdown spotlight on one seat (null: lights back up for everyone). */

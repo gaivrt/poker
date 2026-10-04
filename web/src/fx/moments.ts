@@ -631,6 +631,217 @@ export class Moments {
     }
   }
 
+  // ---------------- M10 BLUFF! ----------------
+
+  /** Everyone folded, and she shows them what they folded to: nothing. */
+  bluff(seat: number, cards: string[], victims: number[]) {
+    return this.run('bluff', async (k) => {
+      const { stage, particles } = this.d;
+      const s = stage.seats[seat];
+      const root = this.layer();
+      try {
+        const shade = this.shade(0.5, 0x1a0a2a);
+        const beam = new Graphics().poly([860, -40, 1060, -40, 1300, 1120, 620, 1120]).fill({ color: 0xc89bff, alpha: 0.22 });
+        beam.blendMode = 'add';
+        beam.alpha = 0;
+        root.addChild(shade, beam);
+        void tween(beam, { alpha: 1 }, 250);
+        // her two cards spin to the middle, facing you
+        const clones = cards.map((code) => this.cloneCard(code, stage.cardSprites([code], seat)[0], root));
+        sfx.play('whoosh', 0.8);
+        await Promise.all(clones.map((c, i) =>
+          Promise.all([
+            tween(c.position, { x: 880 + i * 165, y: 470 }, 380, ease.outCubic),
+            tween(c, { rotation: (i - 0.5) * 0.12 + Math.PI * 2 * (i ? 1 : -1) }, 380, ease.outCubic),
+            tween(c.scale, { x: 1.05, y: 1.05 }, 380, ease.outBack),
+          ])));
+        clones.forEach((c) => (c.rotation %= Math.PI * 2));
+        // the stamp, slanted across the cards, with ink flying
+        const word = this.bigWord('BLUFF!', 190, 0xe04fb0, 0xffffff, FONT_NUM);
+        word.rotation = -0.2;
+        word.position.set(960, 480);
+        word.scale.set(3);
+        word.alpha = 0;
+        const ink = new Graphics();
+        for (let i = 0; i < 26; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = 120 + Math.random() * 300;
+          const sz = 4 + Math.random() * 16;
+          ink.ellipse(960 + Math.cos(a) * r, 480 + Math.sin(a) * r * 0.6, sz * (1 + Math.random()), sz);
+        }
+        ink.fill({ color: 0x4b1a6f, alpha: 0.85 });
+        ink.alpha = 0;
+        root.addChild(ink, word);
+        await Promise.all([tween(word.scale, { x: 1, y: 1 }, 170, ease.inCubic), tween(word, { alpha: 1 }, 100)]);
+        ink.alpha = 1;
+        ink.scale.set(0.6);
+        ink.pivot.set(960, 480);
+        ink.position.set(960, 480);
+        void tween(ink.scale, { x: 1, y: 1 }, 220, ease.outCubic);
+        this.impact({ x: 960, y: 480 }, 0.7);
+        sfx.play('ooh', 0.9);
+        const name = new Text({ text: `${s.char.name} 是在诈唬！`, style: { fontFamily: FONT, fontSize: 40, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x300b0b, width: 7 } } });
+        name.anchor.set(0.5);
+        name.position.set(960, 680);
+        root.addChild(name);
+        for (const v of victims) stage.seats[v].fooled();
+        const p = this.toWorld({ x: 960, y: 480 });
+        particles.sparkle(p.x, p.y, 16, 360);
+        await this.hold(900 * k);
+        await tween(root, { alpha: 0 }, 260);
+      } finally {
+        root.destroy({ children: true });
+      }
+    });
+  }
+
+  // ---------------- M11 caught bluff / hero call ----------------
+
+  /** The bettor was bluffing and the caller saw through it: colour drains from everything
+   *  but the caller, the bluff shatters like glass, and the caller gets her stamp. */
+  caught(bluffer: number, caller: number, godCall: boolean) {
+    return this.run('caught', async (k) => {
+      const { stage } = this.d;
+      const root = this.layer();
+      try {
+        stage.drain(caller);
+        sfx.play('crack', 0.8);
+        await wait(220);
+        const sprites = stage.seats[bluffer].cards.filter((c) => c.visible);
+        for (const c of sprites) {
+          const p = this.d.screen.toLocal(c.getGlobalPosition());
+          const sc = (c.w * Math.abs(c.worldTransform.a)) / Math.abs(this.d.screen.worldTransform.a);
+          this.shatter(root, p, sc, sc * (c.h / c.w), c.rotation);
+          c.visible = false;
+        }
+        sfx.play('glass', 1);
+        this.d.camera.shake(10, 300);
+        void this.d.post.flash(0.35, 200);
+        const caller_ = stage.seats[caller];
+        const at = this.toScreen({ x: caller_.spot.cards.x, y: caller_.spot.cards.y - 120 });
+        await wait(250);
+        await stamp(root, godCall ? '神跟注！' : '抓到了！', Math.min(1660, Math.max(260, at.x)), Math.max(260, at.y), {
+          font: FONT_BRUSH, size: 120, color: godCall ? 0xffd36b : 0xffffff, stroke: godCall ? 0x5b2324 : 0x2a8e9e, hold: 600 * k,
+        });
+      } finally {
+        stage.drain(null);
+        root.destroy({ children: true });
+      }
+    });
+  }
+
+  /** A card breaking into shards that fly apart and fall. */
+  private shatter(layer: Container, at: Point, w: number, h: number, rot: number) {
+    const cx = (Math.random() - 0.5) * w * 0.3, cy = (Math.random() - 0.5) * h * 0.3;
+    const rim: Point[] = [];
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * 4;
+      const side = Math.floor(t), f = t - side + (Math.random() - 0.5) * 0.15;
+      const x = side === 0 ? -w / 2 + f * w : side === 1 ? w / 2 : side === 2 ? w / 2 - f * w : -w / 2;
+      const y = side === 0 ? -h / 2 : side === 1 ? -h / 2 + f * h : side === 2 ? h / 2 : h / 2 - f * h;
+      rim.push({ x, y });
+    }
+    const shards: { g: Graphics; vx: number; vy: number; vr: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = rim[i], b = rim[(i + 1) % n];
+      const g = new Graphics()
+        .poly([cx, cy, a.x, a.y, b.x, b.y]).fill(0xfffbf5).stroke({ width: 2, color: 0xd9cbbd })
+        .poly([cx, cy, a.x, a.y, b.x, b.y]).fill({ color: 0xb9e4f0, alpha: 0.25 });
+      const c = layer.addChild(new Container());
+      c.position.set(at.x, at.y);
+      c.rotation = rot;
+      c.addChild(g);
+      const mx = (cx + a.x + b.x) / 3, my = (cy + a.y + b.y) / 3;
+      const len = Math.hypot(mx - cx, my - cy) || 1;
+      shards.push({ g, vx: ((mx - cx) / len) * (180 + Math.random() * 260), vy: ((my - cy) / len) * (180 + Math.random() * 260) - 220, vr: (Math.random() - 0.5) * 9 });
+    }
+    void animate(900, (p) => {
+      const t = p * 0.9;
+      for (const sh of shards) {
+        sh.g.position.set(sh.vx * t, sh.vy * t + 900 * t * t);
+        sh.g.rotation = sh.vr * t;
+        sh.g.alpha = 1 - p * p;
+      }
+    }, ease.linear);
+  }
+
+  // ---------------- M12 comeback ----------------
+
+  /** The winner was under 25% before the river: freeze, drain, crack the screen, "逆转！". */
+  comeback(winner: number, losers: number[], extras: string[] = []) {
+    return this.run('comeback', async (k) => {
+      const { stage, post } = this.d;
+      const root = this.layer();
+      try {
+        void post.flash(0.95, 160);
+        sfx.play('crack', 1);
+        await wait(160);
+        stage.drain(winner);
+        // the screen cracks from the middle
+        const crack = new Graphics();
+        for (let i = 0; i < 9; i++) {
+          let a = (i / 9) * Math.PI * 2 + Math.random() * 0.4;
+          let x = 960, y = 520;
+          crack.moveTo(x, y);
+          for (let j = 0; j < 6; j++) {
+            a += (Math.random() - 0.5) * 0.6;
+            const step = 60 + Math.random() * 110;
+            x += Math.cos(a) * step;
+            y += Math.sin(a) * step;
+            crack.lineTo(x, y);
+          }
+        }
+        crack.stroke({ width: 9, color: 0x300b0b, alpha: 0.35 }).stroke({ width: 3, color: 0xffffff, alpha: 0.95 });
+        crack.pivot.set(960, 520);
+        crack.position.set(960, 520);
+        crack.scale.set(0.1);
+        root.addChild(crack);
+        void tween(crack.scale, { x: 1, y: 1 }, 140, ease.outCubic);
+        const word = this.bigWord('逆转！', 230, 0xffd36b);
+        word.position.set(960, 500);
+        word.scale.set(3);
+        word.alpha = 0;
+        root.addChild(word);
+        this.extrasText(root, extras, 650);
+        await Promise.all([tween(word.scale, { x: 1, y: 1 }, 180, ease.inCubic), tween(word, { alpha: 1 }, 100)]);
+        this.impact({ x: 960, y: 500 }, 1.2);
+        for (const l of losers) {
+          const s = stage.seats[l];
+          if (!s.isHero) s.setPose('shock');
+          s.shakePlate();
+        }
+        await wait(300);
+        void tween(crack, { alpha: 0 }, 500); // and heals
+        await this.hold(800 * k);
+        await tween(root, { alpha: 0 }, 250);
+      } finally {
+        stage.drain(null);
+        root.destroy({ children: true });
+      }
+    });
+  }
+
+  // ---------------- M14 elimination ----------------
+
+  /** Her name plate burns to ash and the wind takes what was in front of her. */
+  eliminate(seat: number, place: string, full: boolean) {
+    const s = this.d.stage.seats[seat];
+    if (!full) {
+      s.setOut(place);
+      return Promise.resolve();
+    }
+    return this.run('out', async () => {
+      sfx.play('whoosh2', 0.7);
+      const at = await s.burnAway();
+      this.d.particles.ash(at.x, at.y, 200, 50);
+      this.d.particles.ash(s.spot.cards.x, s.spot.cards.y, 120, 20);
+      s.setOut(place);
+      sfx.play('thud', 0.7);
+      await this.hold(500);
+    });
+  }
+
   // ---------------- M13 本局主役 ----------------
 
   mvp(seat: number, amount: number, extras: string[] = []) {
