@@ -386,7 +386,7 @@ export class Director {
     if (caught) options.push([god ? '神跟注' : '抓到了', () => this.moments.caught(ag!.seat, e.seat, god)]);
     if (name && cat === FULL_HOUSE) options.push([name, (x) => this.moments.bigHand(e.seat, cat, false, best, x)]);
     if (!options.length) return;
-    if (this.pres === 'simple') return this.moments.quick(options[0][0], 0xffd36b);
+    if (this.pres === 'simple') return this.moments.quick(options[0][0]);
     const [, play] = options[0];
     await play(options.slice(1).map(([label]) => label));
   }
@@ -527,13 +527,13 @@ export class Director {
           this.foldedAfter.add(e.seat);
           this.foldedAll.add(e.seat);
           s.setFolded(true);
-          s.setTag('弃牌', 0x9a94b8);
+          s.setTag('弃牌', 'muted');
         } else if (e.action === 'check') {
-          s.setTag(`过牌${secs}`, 0xcfe9df);
+          s.setTag(`过牌${secs}`);
           sfx.play('tick', 1.5);
         } else {
           const verb = e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注';
-          s.setTag(`${verb}${size}${secs}`, 0xffe08a);
+          s.setTag(`${verb}${size}${secs}`, 'bet');
           // M5: the all-in cut-in plays before the chips avalanche in.
           if (e.allIn && this.pres !== 'off') {
             if (this.allIns++ > 0) await this.moments.allInSmall(e.seat);
@@ -677,7 +677,7 @@ export class Director {
           if (this.pres === 'full') await this.moments.bluff(e.seat, e.cards, victims);
           else {
             victims.forEach((v) => T.seats[v].fooled());
-            await this.moments.quick('BLUFF!', 0xe04fb0);
+            await this.moments.quick('诈唬！');
           }
           break;
         }

@@ -23,20 +23,20 @@ import { timing } from './tween';
 import { Overlay, PLACE_POINTS } from './ui/overlay';
 
 // Fonts come from Google Fonts; don't wait forever if they are blocked.
-// The brush font is split into subsets by character, so ask for the ones the big moments use.
-const BRUSH_TEXT = '胜负揭晓高牌一对两对三条顺子同花葫芦四条同花顺皇家冤家牌本局主役混战到带大和AKQJT98765432';
+// Noto Sans SC is split into subsets by character, so ask for the ones the big words use.
+const BIG_TEXT = '牌桌心理战段位赛单人练习好友房弃牌跟注加注过牌下注全下底池胜负揭晓高牌一对两对三条顺子同花葫芦四条同花顺皇家冤家牌本局主役混战诈唬逆转';
 await Promise.race([
   Promise.all([
-    ...['700 40px "Cinzel"', '900 40px "Noto Serif SC"', '700 40px "Noto Sans SC"'].map((f) => document.fonts.load(f)),
-    document.fonts.load('900 40px "Noto Serif SC"', '牌桌心理战段位赛单人练习好友房弃牌跟注加注过牌下注全下底池胜负揭晓'),
-    document.fonts.load('40px "Ma Shan Zheng"', BRUSH_TEXT),
+    document.fonts.load('40px "Archivo Black"', 'AKQJ1098765432 ALLINVS+-,0'),
+    document.fonts.load('700 40px "Noto Sans SC"'),
+    document.fonts.load('900 40px "Noto Sans SC"', BIG_TEXT),
   ]),
   new Promise((r) => setTimeout(r, 2500)),
 ]);
 
 const app = new Application();
 await app.init({
-  background: 0x300b0b,
+  background: 0x121117,
   resizeTo: window,
   antialias: true,
   resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -181,10 +181,11 @@ function teardown() {
 async function showHome() {
   teardown();
   overlay.setInGame(false);
-  const mascot = CAST[4];
-  const [bg, poses] = await Promise.all([loadBackground('lobby', { x: 1300, y: 380 }), loadPoses(characterId(4), mascot)]);
+  const mascot = CAST[0];
+  const second = CAST[5];
+  const [bg, poses, poses2] = await Promise.all([loadBackground('lobby', { x: 1300, y: 500 }), loadPoses(characterId(0), mascot), loadPoses(characterId(5), second)]);
   music.play('lobby');
-  lobby = new Lobby(bg, poses.smug, mascot, particles, worldFx);
+  lobby = new Lobby(bg, { char: mascot, pose: poses.smug }, { char: second, pose: poses2.idle }, worldFx);
   world.addChild(lobby);
   const profile = loadProfile();
   const handlers = {

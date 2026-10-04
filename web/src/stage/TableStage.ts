@@ -1,5 +1,5 @@
-// The first-person table (docs/07 §4, docs/08 §1): layered scene, board, pot and
-// the everyday moments M1–M4 (deal + squeeze, flop fan, turn/river suspense,
+// The table (docs/10, docs/08 §1): the room, a card-back table with the players'
+// court cards around it, board, pot and the everyday moments M1–M4 (deal + squeeze, flop fan, turn/river suspense,
 // weighted bets). Big moments live in fx/ and director.ts.
 import { ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { sfx } from '../audio/sfx';
@@ -10,7 +10,7 @@ import type { Post } from '../fx/post';
 import { CardSprite } from '../table/CardSprite';
 import { BOARD_CARD, BOARD_X, BOARD_Y, FONT_DISPLAY, FONT_NUM, POT_POS, type Point, SHOE, SPOTS, fmt } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
-import { PAL, paintBeam, paintForeground, paintTable, type Pose } from './painter';
+import { PAL, paintForeground, paintTable, type Pose } from './painter';
 import { Seat, chipStack } from './Seat';
 
 export interface StageDeps {
@@ -53,10 +53,7 @@ export class TableStage extends Container {
     bgSprite.width = 1920 + 80;
     bgSprite.height = 1080 + 50;
     bgSprite.position.set(-40, -25);
-    // a cone of warm light falling on the table, in front of the room and behind the players
-    const beam = new Sprite(paintBeamTexture());
-    beam.blendMode = 'add';
-    this.background.addChild(bgSprite, beam);
+    this.background.addChild(bgSprite);
     this.tableLayer.addChild(new Sprite(paintTableTexture()));
 
     // Opponents sit behind the table (far ones first so near ones overlap them).
@@ -75,26 +72,23 @@ export class TableStage extends Container {
       this.board.push(c);
     });
 
-    const potBg = new Graphics()
-      .roundRect(-120, -24, 240, 48, 6).fill({ color: 0x0a0608, alpha: 0.82 })
-      .roundRect(-120, -24, 240, 48, 6).stroke({ width: 2, color: PAL.gold })
-      .roundRect(-115, -19, 230, 38, 4).stroke({ width: 1, color: PAL.gold, alpha: 0.35 });
-    this.potText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 24, fill: PAL.goldHi, letterSpacing: 1 } });
+    const potBg = new Graphics().roundRect(-115, -24, 230, 48, 24).fill(PAL.ivory);
+    this.potText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: 24, fill: PAL.ink } });
     this.potText.anchor.set(0.5);
     this.potBox.addChild(potBg, this.potText);
     this.potBox.position.set(POT_POS.x, POT_POS.y);
     this.potChips.position.set(POT_POS.x - 175, POT_POS.y + 8);
 
     const btn = new Graphics()
-      .ellipse(3, 5, 23, 15).fill({ color: 0x000000, alpha: 0.4 })
-      .circle(0, 0, 22).fill(PAL.ivory).stroke({ width: 3, color: PAL.gold })
-      .circle(0, 0, 16).stroke({ width: 1, color: PAL.goldLo, alpha: 0.7 });
-    const d = new Text({ text: 'D', style: { fontFamily: FONT_NUM, fontWeight: '900', fontSize: 20, fill: 0x17131c } });
+      .ellipse(3, 6, 22, 16).fill({ color: 0x000000, alpha: 0.4 })
+      .circle(0, 0, 21).fill(PAL.ivory)
+      .circle(0, 0, 16).stroke({ width: 1.5, color: PAL.cobalt, alpha: 0.6 });
+    const d = new Text({ text: 'D', style: { fontFamily: FONT_NUM, fontSize: 18, fill: PAL.ink } });
     d.anchor.set(0.5);
     this.dealer.addChild(btn, d);
     this.dealer.visible = false;
 
-    this.squeezeHint = new Text({ text: '按住手牌眯牌', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 24, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 6 } } });
+    this.squeezeHint = new Text({ text: '按住手牌眯牌', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 22, fill: PAL.ivory, stroke: { color: PAL.ink, width: 6 } } });
     this.squeezeHint.anchor.set(0.5);
     this.squeezeHint.position.set(SPOTS[0].cards.x + 100, SPOTS[0].cards.y - 170);
     this.squeezeHint.visible = false;
@@ -273,7 +267,7 @@ export class TableStage extends Container {
       c.highlight(on);
       c.alpha = best && !on ? 0.45 : 1;
       void tween(c, { y: BOARD_Y - (on ? 16 : 0) }, 260, ease.outBack);
-      if (on) void wait(i * 60).then(() => c.shine(0xffd36b, 420));
+      if (on) void wait(i * 60).then(() => c.shine(0xcfd6ff, 420));
     });
   }
 
@@ -298,7 +292,7 @@ export class TableStage extends Container {
     c.set(code);
     c.y = BOARD_Y;
     sfx.play('flip');
-    void c.shine(0xffd36b, 420);
+    void c.shine(0xcfd6ff, 420);
   }
 
   /** Face-up card sprites (board and hands) showing any of `codes`. */
@@ -412,11 +406,11 @@ export class TableStage extends Container {
 
   showBanner(text: string, sub = '') {
     this.hideBanner();
-    const t = new Text({ text, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 40, fill: PAL.ivory } });
+    const t = new Text({ text, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 40, fill: PAL.ink } });
     t.anchor.set(0.5);
     const lines: Text[] = [t];
     if (sub) {
-      const s = new Text({ text: sub, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 28, fill: PAL.goldHi } });
+      const s = new Text({ text: sub, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 26, fill: PAL.cobalt } });
       s.anchor.set(0.5);
       s.y = 46;
       lines.push(s);
@@ -424,10 +418,8 @@ export class TableStage extends Container {
     const w = Math.max(...lines.map((l) => l.width)) + 80;
     const h = sub ? 118 : 74;
     const bg = new Graphics()
-      .roundRect(-w / 2 + 4, -38 + 8, w, h, 8).fill({ color: 0x000000, alpha: 0.45 })
-      .roundRect(-w / 2, -38, w, h, 8).fill({ color: 0x0e0a0d, alpha: 0.92 })
-      .roundRect(-w / 2, -38, w, h, 8).stroke({ width: 2.5, color: PAL.gold })
-      .roundRect(-w / 2 + 6, -32, w - 12, h - 12, 5).stroke({ width: 1, color: PAL.gold, alpha: 0.4 });
+      .roundRect(-w / 2 + 6, -38 + 12, w, h, 20).fill({ color: 0x000000, alpha: 0.4 })
+      .roundRect(-w / 2, -38, w, h, 20).fill(PAL.ivory);
     this.banner.addChild(bg, ...lines);
     this.banner.position.set(960, 470);
     this.banner.rotation = 0;
@@ -467,11 +459,6 @@ let fgTex: Texture | null = null;
 function paintTableTexture(): Texture {
   tableTex ??= Texture.from(paintTable(1920, 1080));
   return tableTex;
-}
-let beamTex: Texture | null = null;
-function paintBeamTexture(): Texture {
-  beamTex ??= Texture.from(paintBeam(1920, 1080, 960, -40, 760, 760));
-  return beamTex;
 }
 function paintForegroundTexture(): Texture {
   fgTex ??= Texture.from(paintForeground(1920, 1080));

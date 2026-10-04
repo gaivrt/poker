@@ -1,15 +1,14 @@
 import { Container, Graphics, Text } from 'pixi.js';
 import { ease, tween } from '../tween';
+import { PAL } from '../stage/painter';
 import { FONT, FONT_NUM } from './layout';
 
 const SUITS: Record<string, { glyph: string; color: number }> = {
-  s: { glyph: '♠', color: 0x17131c },
-  c: { glyph: '♣', color: 0x17131c },
-  h: { glyph: '♥', color: 0xb81d3c },
-  d: { glyph: '♦', color: 0xb81d3c },
+  s: { glyph: '♠', color: PAL.ink },
+  c: { glyph: '♣', color: PAL.ink },
+  h: { glyph: '♥', color: PAL.red },
+  d: { glyph: '♦', color: PAL.red },
 };
-const GOLD = 0xc9a25a;
-const IVORY = 0xfbf5ea;
 
 function rankLabel(r: string): string {
   return r === 'T' ? '10' : r;
@@ -62,30 +61,25 @@ export class CardSprite extends Container {
     this.face.visible = false;
   }
 
-  /** Crimson lacquer back with a gold lattice and a medallion. */
+  /** The house back: cobalt lattice inside an ivory border (the same back as the table). */
   private drawBack() {
     const { w, h } = this;
     const r = Math.max(5, w * 0.08);
-    const g = new Graphics().roundRect(0, 0, w, h, r).fill(0x5e0c1c).stroke({ width: Math.max(1.5, w * 0.02), color: 0xf3e3c0 });
-    const m = w * 0.09;
-    g.roundRect(m, m, w - m * 2, h - m * 2, r * 0.6).stroke({ width: Math.max(1, w * 0.014), color: GOLD, alpha: 0.9 });
-    // lattice
-    const step = Math.max(8, w * 0.14);
+    const bw = Math.max(3, w * 0.07);
+    const g = new Graphics().roundRect(0, 0, w, h, r).fill(PAL.ivory)
+      .roundRect(bw, bw, w - bw * 2, h - bw * 2, r * 0.6).fill(PAL.cobalt);
+    const step = Math.max(6, w * 0.09);
     const lattice = new Graphics();
     for (let x = -h; x < w + h; x += step) {
-      lattice.moveTo(x, m).lineTo(x + (h - m * 2), h - m);
-      lattice.moveTo(x, h - m).lineTo(x + (h - m * 2), m);
+      lattice.moveTo(x, 0).lineTo(x + h, h);
+      lattice.moveTo(x, h).lineTo(x + h, 0);
     }
-    lattice.stroke({ width: Math.max(0.8, w * 0.008), color: GOLD, alpha: 0.35 });
-    const clip = new Graphics().roundRect(m * 1.3, m * 1.3, w - m * 2.6, h - m * 2.6, r * 0.5).fill(0xffffff);
+    lattice.stroke({ width: Math.max(0.8, w * 0.008), color: PAL.ivory, alpha: 0.28 });
+    const clip = new Graphics().roundRect(bw, bw, w - bw * 2, h - bw * 2, r * 0.6).fill(0xffffff);
     lattice.mask = clip;
-    // medallion
-    const med = new Graphics()
-      .circle(w / 2, h / 2, w * 0.2).fill(0x5e0c1c).stroke({ width: Math.max(1, w * 0.02), color: GOLD })
-      .circle(w / 2, h / 2, w * 0.13).stroke({ width: Math.max(0.8, w * 0.01), color: GOLD, alpha: 0.7 });
-    const d = w * 0.08;
-    med.poly([w / 2, h / 2 - d, w / 2 + d * 0.7, h / 2, w / 2, h / 2 + d, w / 2 - d * 0.7, h / 2]).fill(GOLD);
-    this.back.addChild(g, lattice, clip, med);
+    const m = bw + Math.max(2, w * 0.045);
+    const line = new Graphics().roundRect(m, m, w - m * 2, h - m * 2, r * 0.4).stroke({ width: Math.max(1, w * 0.012), color: PAL.ivory, alpha: 0.6 });
+    this.back.addChild(g, lattice, clip, line);
   }
 
   private drawFace(code: string) {
@@ -96,14 +90,13 @@ export class CardSprite extends Container {
     const r = Math.max(5, w * 0.08);
     this.face.addChild(
       new Graphics()
-        .roundRect(0, 0, w, h, r).fill(IVORY).stroke({ width: Math.max(1.2, w * 0.016), color: 0xd8c7a6 })
-        .roundRect(w * 0.035, w * 0.035, w - w * 0.07, h - w * 0.07, r * 0.7).stroke({ width: Math.max(0.6, w * 0.008), color: GOLD, alpha: 0.6 }),
+        .roundRect(0, 0, w, h, r).fill(PAL.ivory).stroke({ width: Math.max(1, w * 0.012), color: 0xd9d1bf }),
     );
     // corner indices (top-left and, upside down, bottom-right)
     const idx = Math.round(h * 0.2);
     for (const flip of [false, true]) {
       const corner = new Container();
-      const t = new Text({ text: rankLabel(rank), style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: idx, fill: suit.color } });
+      const t = new Text({ text: rankLabel(rank), style: { fontFamily: FONT_NUM, fontSize: Math.round(idx * 0.9), fill: suit.color } });
       t.anchor.set(0.5, 0);
       const p = new Text({ text: suit.glyph, style: { fontFamily: FONT, fontSize: Math.round(idx * 0.72), fill: suit.color } });
       p.anchor.set(0.5, 0);
@@ -128,27 +121,25 @@ export class CardSprite extends Container {
         this.face.addChild(pip);
       }
     } else if (rank === 'A') {
-      const ring = new Graphics().circle(w / 2, h / 2, w * 0.28).stroke({ width: Math.max(0.8, w * 0.012), color: GOLD, alpha: 0.8 });
+      const ring = new Graphics().circle(w / 2, h / 2, w * 0.28).stroke({ width: Math.max(0.8, w * 0.014), color: PAL.cobalt, alpha: 0.6 });
       const big = new Text({ text: suit.glyph, style: { fontFamily: FONT, fontSize: Math.round(h * 0.4), fill: suit.color } });
       big.anchor.set(0.5);
       big.position.set(w / 2, h * 0.5);
       this.face.addChild(ring, big);
     } else {
-      // J Q K: a gilded frame, the letter, a crown and the suit
+      // J Q K: a court frame split on the diagonal, the letter and the suit
       const fx = w * 0.22, fy = h * 0.17, fw = w * 0.56, fh = h * 0.66;
       const frame = new Graphics()
-        .roundRect(fx, fy, fw, fh, r * 0.5).fill(suit.color === 0x17131c ? 0xebe1f0 : 0xf7e1df)
-        .roundRect(fx, fy, fw, fh, r * 0.5).stroke({ width: Math.max(1, w * 0.018), color: GOLD });
-      const crown = new Graphics();
-      const cw = fw * 0.5, cx = w / 2 - cw / 2, cy = fy + fh * 0.12, ch = fh * 0.16;
-      crown.poly([cx, cy + ch, cx, cy + ch * 0.2, cx + cw * 0.25, cy + ch * 0.6, cx + cw * 0.5, cy, cx + cw * 0.75, cy + ch * 0.6, cx + cw, cy + ch * 0.2, cx + cw, cy + ch]).fill(GOLD);
-      const letter = new Text({ text: rank, style: { fontFamily: FONT_NUM, fontWeight: '900', fontSize: Math.round(fh * 0.42), fill: suit.color } });
+        .roundRect(fx, fy, fw, fh, r * 0.4).fill(PAL.cobaltTint)
+        .poly([fx, fy + fh * 0.56, fx + fw, fy + fh * 0.44, fx + fw, fy + fh, fx, fy + fh]).fill({ color: PAL.cobalt, alpha: 0.12 })
+        .roundRect(fx, fy, fw, fh, r * 0.4).stroke({ width: Math.max(1, w * 0.018), color: PAL.cobalt });
+      const letter = new Text({ text: rank, style: { fontFamily: FONT_NUM, fontSize: Math.round(fh * 0.4), fill: suit.color } });
       letter.anchor.set(0.5);
       letter.position.set(w / 2, fy + fh * 0.55);
       const s = new Text({ text: suit.glyph, style: { fontFamily: FONT, fontSize: Math.round(fh * 0.18), fill: suit.color } });
       s.anchor.set(0.5);
       s.position.set(w / 2, fy + fh * 0.86);
-      this.face.addChild(frame, crown, letter, s);
+      this.face.addChild(frame, letter, s);
     }
   }
 
@@ -199,7 +190,7 @@ export class CardSprite extends Container {
     this.back.visible = true;
   }
 
-  highlight(on: boolean, color = 0xffd98a) {
+  highlight(on: boolean, color: number = PAL.cobaltHi) {
     this.outline.clear();
     if (on) this.outline.roundRect(-4, -4, this.w + 8, this.h + 8, Math.max(8, this.w * 0.1)).stroke({ width: Math.max(4, this.w * 0.05), color });
   }

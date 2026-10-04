@@ -1,47 +1,53 @@
-// First-person table layout in design pixels (1920×1080). See docs/07 §4 and docs/08 §1.
+// Table layout in design pixels (1920×1080). See docs/10 (牌面) and docs/08 §1.
 export const DESIGN_W = 1920;
 export const DESIGN_H = 1080;
 
 export interface Point { x: number; y: number }
 
 export const FONT = '"Noto Sans SC","PingFang SC","Hiragino Sans","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
-export const FONT_DISPLAY = '"Noto Serif SC","Songti SC","STSong","Noto Sans SC",serif';
-/** Brush calligraphy for hand names and big words (胜负揭晓, 四条, 本局主役...). */
-export const FONT_BRUSH = '"Ma Shan Zheng","ZCOOL QingKe HuangYou","Noto Sans SC","PingFang SC",serif';
-export const FONT_NUM = '"Cinzel","Noto Serif SC","Times New Roman",serif';
+/** Headings and big words: the same sans at its heaviest weight (900). */
+export const FONT_DISPLAY = FONT;
+/** Big moment words (胜负揭晓, 四条, 本局主役...). Was a brush face; the card-face look keeps one sans. */
+export const FONT_BRUSH = FONT;
+/** Card ranks, numbers and English: a wide grotesk, like the index on a playing card. */
+export const FONT_NUM = '"Archivo Black","Noto Sans SC","Arial Black",sans-serif';
 
 export interface SeatSpot {
-  base: Point;     // bottom-centre of the character art (hidden below the table rim)
-  height: number;  // displayed height of the art (depth: nearer seats are bigger)
-  plate: Point;    // name plate on the table edge; chips leave from here
+  base: Point;     // bottom-centre of the seat's court card (the hero has none: height 0)
+  height: number;  // height of that card
+  tilt: number;    // its rotation
+  plate: Point;    // name and stack under the card; chips leave from here
   plateTilt: number;
-  cards: Point;    // where its two cards lie on the felt
+  cards: Point;    // where its two cards lie on the table
   cardScale: number;
-  bet: Point;      // its bet on the felt
+  bet: Point;      // its bet on the table
   dealer: Point;   // dealer button when it has the button
 }
 
+/** Every opponent is a standing court card around the table (docs/10 §5). */
+export const SEAT_CARD = { w: 190, h: 266 };
+
 // Seat 0 is you (the camera). Seats go clockwise: seat 1 is on your left.
 export const SPOTS: SeatSpot[] = [
-  { base: { x: 185, y: 1150 }, height: 470, plate: { x: 205, y: 1040 }, plateTilt: -0.02, cards: { x: 880, y: 1050 }, cardScale: 1, bet: { x: 700, y: 885 }, dealer: { x: 340, y: 1000 } },
-  { base: { x: 205, y: 870 }, height: 660, plate: { x: 300, y: 650 }, plateTilt: 0.07, cards: { x: 410, y: 745 }, cardScale: 0.9, bet: { x: 520, y: 735 }, dealer: { x: 420, y: 620 } },
-  { base: { x: 600, y: 730 }, height: 540, plate: { x: 600, y: 590 }, plateTilt: 0.03, cards: { x: 505, y: 655 }, cardScale: 0.78, bet: { x: 665, y: 672 }, dealer: { x: 715, y: 575 } },
-  { base: { x: 960, y: 690 }, height: 500, plate: { x: 960, y: 562 }, plateTilt: -0.02, cards: { x: 830, y: 612 }, cardScale: 0.72, bet: { x: 1090, y: 618 }, dealer: { x: 1075, y: 548 } },
-  { base: { x: 1320, y: 730 }, height: 540, plate: { x: 1320, y: 590 }, plateTilt: -0.03, cards: { x: 1415, y: 655 }, cardScale: 0.78, bet: { x: 1255, y: 672 }, dealer: { x: 1205, y: 575 } },
-  { base: { x: 1715, y: 870 }, height: 660, plate: { x: 1620, y: 650 }, plateTilt: -0.07, cards: { x: 1510, y: 745 }, cardScale: 0.9, bet: { x: 1400, y: 735 }, dealer: { x: 1500, y: 620 } },
+  { base: { x: 220, y: 900 }, height: 0, tilt: 0, plate: { x: 220, y: 990 }, plateTilt: 0, cards: { x: 865, y: 935 }, cardScale: 1, bet: { x: 700, y: 800 }, dealer: { x: 600, y: 860 } },
+  { base: { x: 170, y: 678 }, height: 266, tilt: -0.07, plate: { x: 170, y: 712 }, plateTilt: 0, cards: { x: 340, y: 560 }, cardScale: 0.9, bet: { x: 390, y: 665 }, dealer: { x: 330, y: 470 } },
+  { base: { x: 520, y: 383 }, height: 266, tilt: -0.05, plate: { x: 520, y: 416 }, plateTilt: 0, cards: { x: 690, y: 432 }, cardScale: 0.85, bet: { x: 640, y: 505 }, dealer: { x: 430, y: 480 } },
+  { base: { x: 960, y: 343 }, height: 266, tilt: 0, plate: { x: 960, y: 376 }, plateTilt: 0, cards: { x: 830, y: 440 }, cardScale: 0.85, bet: { x: 1080, y: 465 }, dealer: { x: 1110, y: 400 } },
+  { base: { x: 1400, y: 383 }, height: 266, tilt: 0.05, plate: { x: 1400, y: 416 }, plateTilt: 0, cards: { x: 1230, y: 432 }, cardScale: 0.85, bet: { x: 1270, y: 505 }, dealer: { x: 1490, y: 480 } },
+  { base: { x: 1750, y: 678 }, height: 266, tilt: 0.07, plate: { x: 1750, y: 712 }, plateTilt: 0, cards: { x: 1580, y: 560 }, cardScale: 0.9, bet: { x: 1530, y: 665 }, dealer: { x: 1590, y: 470 } },
 ];
 
-export const SHOE: Point = { x: 960, y: 520 };          // where the dealer deals from
-export const POT_POS: Point = { x: 960, y: 690 };
-export const BOARD_Y = 782;
-export const BOARD_X = [740, 850, 960, 1070, 1180];
-export const BOARD_CARD = { w: 96, h: 134 };
-export const HERO_CARD = { w: 200, h: 280 };
+export const SHOE: Point = { x: 960, y: 470 };          // where the dealer deals from
+export const POT_POS: Point = { x: 960, y: 520 };
+export const BOARD_Y = 630;
+export const BOARD_X = [752, 856, 960, 1064, 1168];
+export const BOARD_CARD = { w: 92, h: 128 };
+export const HERO_CARD = { w: 170, h: 238 };
 export const OPP_CARD = { w: 60, h: 84 };
 
-/** Where a character's head ends up for a given spot (art: head at 39% from the top). */
+/** Where a character's face is: in the upper part of her card (the hero: at her name). */
 export function headOf(s: SeatSpot): Point {
-  return { x: s.base.x, y: s.base.y - s.height * 0.61 };
+  return { x: s.base.x, y: s.base.y - s.height * 0.68 };
 }
 
 export function fmt(n: number): string {
