@@ -75,6 +75,17 @@ export async function loadPoses(id: string, char: Character): Promise<Record<Pos
   return out;
 }
 
+/** The painted table (docs/11 §4.3), or null to draw it in code. */
+export async function loadTableArt(): Promise<Texture | null> {
+  const key = 'bg/table-top';
+  if (!cache.has(key)) {
+    const tex = await loadImage('backgrounds/table-top');
+    if (!tex) return null;
+    cache.set(key, tex);
+  }
+  return cache.get(key)!;
+}
+
 /** A background: the PNG if present, else a painted room with the given vanishing point. */
 export async function loadBackground(name: 'table' | 'lobby', vp: { x: number; y: number }): Promise<Texture> {
   const key = `bg/${name}`;

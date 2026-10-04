@@ -13,6 +13,7 @@ characters/<角色ID>/        角色ID：player（你）、rin（凛）、dango�
   stickers/smug.png taunt.png question.png shock.png cry.png angry.png goodhand.png thinking.png   512×512
 backgrounds/
   table.png      牌桌场景背景（不含桌子），1920×1080 或 3840×2160
+  table-top.png  桌子插画，照 art-src/guides/table-guide.png 重画的整张 16:9 图；按桌子外沿自动抠出（docs/11 §4.3）
   lobby.png      主页背景
 audio/
   音效：deal flip chip slide thud whoosh whoosh2 heartbeat impact chime riser tick cheer

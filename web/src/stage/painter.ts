@@ -220,6 +220,19 @@ export function paintBeam(w: number, h: number, x: number, top: number, bottom: 
 
 export const TABLE = { cx: 960, cy: 1010, rx: 1180, ry: 470 };
 
+/** White where the table is (its outer rail edge), slightly feathered: cuts painted
+ *  table art out of the full frame it was generated in. */
+export function paintTableMask(w: number, h: number): HTMLCanvasElement {
+  const [c, g] = canvas(w, h);
+  const { cx, cy, rx, ry } = TABLE;
+  g.filter = 'blur(1.5px)';
+  g.fillStyle = '#fff';
+  g.beginPath();
+  g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  g.fill();
+  return c;
+}
+
 /** The table seen from the player's seat: black leather rail with a gold inlay,
  *  emerald felt lit by a spotlight over the board, a gilded betting line. */
 export function paintTable(w: number, h: number): HTMLCanvasElement {

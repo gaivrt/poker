@@ -146,6 +146,24 @@ Anime background art for a game, wide 16:9. A quiet corner of an exclusive card 
 Dark warm greys and browns, very low saturation, small warm highlights only, shallow depth of field. No people, no text, no signs, no money.
 ```
 
+### 4.3 牌桌 `table-top`（16:9，照底稿重画）
+
+代码画的桌子没有质感，桌子也改成插画。桌子的形状必须和座位、公共牌、名牌的坐标对齐，所以**不从零生成，而是上传构图底稿重画**：
+
+1. 下载底稿 `art-src/guides/table-guide.png`（现在的背景加上精确位置的桌子色块；换了背景就运行 `cd web && node tools/table-guide.mjs` 重新导出）。
+2. 上传底稿，粘贴下面的说明。
+3. 交回整张图（背景也在里面没关系），代码按桌子的外沿椭圆自动抠出来。**唯一的要求是桌子外沿的轮廓不要变**，变了会露出背景或者切掉桌沿。
+
+```
+Repaint the attached image. Keep the camera, the perspective and the room in the background exactly as they are. Repaint ONLY the poker table at the bottom of the image (the dark curved rail and the green oval surface inside it) as a luxurious, high-end poker table, in the same anime background art style as the room. Keep the table's outline, size and position exactly the same: the outer edge of the rail must stay where it is.
+
+Materials: a thick padded rail of dark espresso-brown leather with fine stitching and soft glossy highlights along its rounded top edge; a thin polished brass inlay between the rail and the playing surface; the playing surface in deep dark-green wool felt with a visible fine fabric texture.
+
+Lighting: warm light from the chandelier makes a soft oval pool of light in the middle of the felt, falling off to dark toward the edges; the rail casts a soft shadow onto the edge of the felt. Rich material detail, painted rather than photorealistic.
+
+The table is empty: no cards, no chips, no text, no logos, no printed lines, no cup holders. Same 16:9 framing.
+```
+
 ## 5. 其余 5 个角色（凛定稿后再做）
 
 和凛的流程完全一样：先出 `base`，再改出 6 个表情，最后出 `win` 和 `cutin`。只把 2.1 提示词里的**名字、外貌、姿态**三处换掉：
