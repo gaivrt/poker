@@ -35,10 +35,12 @@ export const SPOTS: SeatSpot[] = [
 ];
 
 export const SHOE: Point = { x: 960, y: 520 };          // where the dealer deals from
-export const POT_POS: Point = { x: 960, y: 690 };
-export const BOARD_Y = 782;
-export const BOARD_X = [740, 850, 960, 1070, 1180];
-export const BOARD_CARD = { w: 96, h: 134 };
+// The board stands on the five card boxes printed on the table art (centres measured
+// from backgrounds/table-top); the pot sits in front of the dealer's tray, as on a real table.
+export const POT_POS: Point = { x: 960, y: 652 };
+export const BOARD_Y = 738;
+export const BOARD_X = [781, 871, 960, 1050, 1139];
+export const BOARD_CARD = { w: 86, h: 120 };
 export const HERO_CARD = { w: 200, h: 280 };
 export const OPP_CARD = { w: 60, h: 84 };
 

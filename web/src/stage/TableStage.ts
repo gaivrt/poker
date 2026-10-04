@@ -10,7 +10,7 @@ import type { Post } from '../fx/post';
 import { CardSprite } from '../table/CardSprite';
 import { BOARD_CARD, BOARD_X, BOARD_Y, FONT_DISPLAY, FONT_NUM, POT_POS, type Point, SHOE, SPOTS, fmt } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
-import { PAL, paintBeam, paintForeground, paintTable, paintTableMask, type Pose } from './painter';
+import { PAL, paintBeam, paintForeground, paintTable, paintTableMarks, paintTableMask, type Pose } from './painter';
 import { Seat, chipStack } from './Seat';
 
 export interface StageDeps {
@@ -67,7 +67,8 @@ export class TableStage extends Container {
       table.mask = mask;
       this.tableLayer.addChild(table, mask);
     } else {
-      this.tableLayer.addChild(new Sprite(paintTableTexture()));
+      // the code-drawn table gets its printed marks here; painted art has its own
+      this.tableLayer.addChild(new Sprite(paintTableTexture()), new Sprite(paintTableMarksTexture()));
     }
 
     // Opponents sit behind the table (far ones first so near ones overlap them).
@@ -476,6 +477,11 @@ let fgTex: Texture | null = null;
 function paintTableTexture(): Texture {
   tableTex ??= Texture.from(paintTable(1920, 1080));
   return tableTex;
+}
+let marksTex: Texture | null = null;
+function paintTableMarksTexture(): Texture {
+  marksTex ??= Texture.from(paintTableMarks(1920, 1080));
+  return marksTex;
 }
 let beamTex: Texture | null = null;
 function paintBeamTexture(): Texture {

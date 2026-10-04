@@ -270,9 +270,10 @@ export function paintTableMask(w: number, h: number): HTMLCanvasElement {
   return c;
 }
 
-/** The racetrack table: a padded black leather rail with stitching, a brass inlay,
- *  dark green felt lit by a pool of light over the board, and a betting line. */
-export function paintTable(w: number, h: number, plain = false): HTMLCanvasElement {
+/** The racetrack table: a padded black leather rail with stitching, a brass inlay and
+ *  dark green felt lit by a pool of light over the board. Printed marks come separately
+ *  (paintTableMarks), so they also go over painted table art. */
+export function paintTable(w: number, h: number): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const outer = tableOutline(0);
   const inner = tableOutline(TABLE.rail);
@@ -352,18 +353,75 @@ export function paintTable(w: number, h: number, plain = false): HTMLCanvasEleme
   g.filter = 'none';
   g.restore();
 
-  // the painting guide (docs/11 §4.3) leaves out the printed marks
-  if (plain) return c;
+  return c;
+}
 
-  // betting line: a smaller racetrack, double
-  g.strokeStyle = rgba(PAL.beige, 0.4);
-  g.lineWidth = 2;
-  outlinePath(g, tableOutline(0.5));
-  g.stroke();
-  g.strokeStyle = rgba(PAL.beige, 0.18);
+/** What is printed on the felt, in the table's perspective: a double racetrack betting
+ *  line and the house crest in the middle (a ring with the four suits around the name),
+ *  all in matte brass ink. Transparent elsewhere; drawn over either kind of table. */
+export function paintTableMarks(w: number, h: number): HTMLCanvasElement {
+  const [c, g] = canvas(w, h);
+  const ink = (a: number) => `rgba(216,195,154,${a})`;
+  const path = (pts: number[]) => {
+    outlinePath(g, pts);
+    g.stroke();
+  };
+  const circle = (r: number) => {
+    const pts: number[] = [];
+    for (let i = 0; i <= 64; i++) {
+      const t = (i / 64) * Math.PI * 2;
+      pts.push(...tableToScreen(Math.cos(t) * r, TABLE.zc + Math.sin(t) * r));
+    }
+    return pts;
+  };
+
+  // betting line
+  g.strokeStyle = ink(0.42);
+  g.lineWidth = 2.2;
+  path(tableOutline(0.5));
+  g.strokeStyle = ink(0.2);
   g.lineWidth = 1.2;
-  outlinePath(g, tableOutline(0.53));
-  g.stroke();
+  path(tableOutline(0.535));
+
+  // crest rings
+  g.strokeStyle = ink(0.32);
+  g.lineWidth = 2;
+  path(circle(0.5));
+  g.strokeStyle = ink(0.18);
+  g.lineWidth = 1.2;
+  path(circle(0.47));
+  path(circle(0.3));
+
+  // lettering and suits, squashed to lie on the felt (the projection's local aspect at
+  // the centre; the crest is small enough that the affine approximation holds)
+  const squash = TABLE.F / (TABLE.f * TABLE.zc);
+  const flat = (x: number, z: number, draw: () => void) => {
+    const [sx, sy] = tableToScreen(x, z);
+    const k = TABLE.f / z / (TABLE.f / TABLE.zc);
+    g.save();
+    g.translate(sx, sy);
+    g.scale(k, k * squash);
+    draw();
+    g.restore();
+  };
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  flat(0, TABLE.zc, () => {
+    g.fillStyle = ink(0.34);
+    g.font = 'italic 700 58px Georgia, "Noto Serif SC", serif';
+    g.fillText('HOLD\u2019EM', 0, -8);
+    g.fillStyle = ink(0.24);
+    g.font = '600 17px Georgia, serif';
+    g.fillText('M I N D   G A M E S', 0, 40);
+  });
+  const suits: [string, number][] = [['\u2660', -Math.PI / 2], ['\u2665', 0], ['\u2663', Math.PI / 2], ['\u2666', Math.PI]];
+  for (const [glyph, t] of suits) {
+    flat(Math.cos(t) * 0.4, TABLE.zc + Math.sin(t) * 0.4, () => {
+      g.fillStyle = ink(0.3);
+      g.font = '30px Georgia, "Noto Serif SC", serif';
+      g.fillText(glyph, 0, 0);
+    });
+  }
   return c;
 }
 
