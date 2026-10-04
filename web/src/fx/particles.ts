@@ -1,6 +1,6 @@
 // Pooled particles: chips with tumbling flips, sparks, dust rings, confetti.
 import { type Container, Sprite, Texture, Ticker } from 'pixi.js';
-import { paintChip, paintGlow } from '../stage/painter';
+import { CHIP_COLORS, paintChip, paintGlow } from '../stage/painter';
 
 interface P {
   s: Sprite;
@@ -11,7 +11,7 @@ interface P {
 export class Particles {
   private live: P[] = [];
   private pool: Sprite[] = [];
-  readonly chipTex = [Texture.from(paintChip(64)), Texture.from(paintChip(64, 0xf7f2ee, 0x1e1a22)), Texture.from(paintChip(64, 0xd6334a, 0xf7f2ee))];
+  readonly chipTex = CHIP_COLORS.slice(0, 3).map(([face, spot]) => Texture.from(paintChip(64, face, spot)));
   readonly glowTex = Texture.from(paintGlow(128));
   readonly goldTex = Texture.from(paintGlow(64, '#FFD36B'));
   private paperTex: Texture | null = null;
@@ -128,7 +128,7 @@ export class Particles {
       g.fillRect(0, 0, 18, 10);
       this.paperTex = Texture.from(c);
     }
-    const colors = [0xffd36b, 0xf69375, 0xe04fb0, 0x52c0cf, 0xb9a7f0, 0xffffff];
+    const colors = [0xffe3a3, 0xe8c27a, 0xc9a25a, 0xf6ecd9, 0xb81d3c, 0xffffff];
     for (let i = 0; i < n; i++) {
       this.spawn(this.paperTex, x + (Math.random() - 0.5) * spread, y - Math.random() * 200, {
         vx: (Math.random() - 0.5) * 260, vy: 160 + Math.random() * 260, g: 120, vr: (Math.random() - 0.5) * 10,

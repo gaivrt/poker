@@ -5,10 +5,10 @@ export const DESIGN_H = 1080;
 export interface Point { x: number; y: number }
 
 export const FONT = '"Noto Sans SC","PingFang SC","Hiragino Sans","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
-export const FONT_DISPLAY = '"ZCOOL QingKe HuangYou","Noto Sans SC","PingFang SC","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif';
+export const FONT_DISPLAY = '"Noto Serif SC","Songti SC","STSong","Noto Sans SC",serif';
 /** Brush calligraphy for hand names and big words (胜负揭晓, 四条, 本局主役...). */
 export const FONT_BRUSH = '"Ma Shan Zheng","ZCOOL QingKe HuangYou","Noto Sans SC","PingFang SC",serif';
-export const FONT_NUM = '"Dela Gothic One","Noto Sans SC","PingFang SC","WenQuanYi Zen Hei",sans-serif';
+export const FONT_NUM = '"Cinzel","Noto Serif SC","Times New Roman",serif';
 
 export interface SeatSpot {
   base: Point;     // bottom-centre of the character art (hidden below the table rim)

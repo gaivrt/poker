@@ -1,6 +1,6 @@
 // Post-processing: grain, vignette (with "tighten" for suspense), bloom on the
 // effects layer, white flash, shockwave and RGB split for impact frames.
-import { type Container, Graphics, NoiseFilter, Sprite, Texture, Ticker } from 'pixi.js';
+import { ColorMatrixFilter, type Container, Graphics, NoiseFilter, Sprite, Texture, Ticker } from 'pixi.js';
 import { AdvancedBloomFilter, RGBSplitFilter, ShockwaveFilter } from 'pixi-filters';
 import { animate, ease, tween } from '../tween';
 import { paintVignette } from '../stage/painter';
@@ -8,7 +8,8 @@ import { paintVignette } from '../stage/painter';
 export type Quality = 'high' | 'medium' | 'low';
 
 export class Post {
-  private grain = new NoiseFilter({ noise: 0.07, seed: Math.random() });
+  private grain = new NoiseFilter({ noise: 0.05, seed: Math.random() });
+  private grade = new ColorMatrixFilter();
   private vignette: Sprite;
   private flashG = new Graphics().rect(0, 0, 1920, 1080).fill(0xffffff);
   private red: Sprite;
@@ -21,7 +22,10 @@ export class Post {
     private screen: Container,
   ) {
     this.vignette = new Sprite(Texture.from(paintVignette(1920, 1080)));
-    this.vignette.alpha = 0.75;
+    this.vignette.alpha = 0.85;
+    // colour grade: a little more contrast and richness (deep blacks, glowing golds)
+    this.grade.contrast(0.12, false);
+    this.grade.saturate(0.08, true);
     this.flashG.alpha = 0;
     this.red = new Sprite(Texture.from(redEdge(1920, 1080)));
     this.red.alpha = 0;
@@ -39,7 +43,7 @@ export class Post {
 
   setQuality(q: Quality) {
     this.quality = q;
-    this.world.filters = q === 'low' ? [] : [this.grain];
+    this.world.filters = q === 'low' ? [] : q === 'medium' ? [this.grade] : [this.grade, this.grain];
     this.fxLayer.filters = q === 'high' ? [new AdvancedBloomFilter({ threshold: 0.45, bloomScale: 1.1, brightness: 1, blur: 6, quality: 4 })] : [];
   }
 

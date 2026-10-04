@@ -8,6 +8,7 @@ import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { music } from '../audio/music';
 import { sfx } from '../audio/sfx';
 import type { TableStage } from '../stage/TableStage';
+import { PAL } from '../stage/painter';
 import { CardSprite } from '../table/CardSprite';
 import { BOARD_X, BOARD_Y, FONT, FONT_BRUSH, FONT_NUM, POT_POS, type Point, fmt } from '../table/layout';
 import { animate, ease, timing, tween, wait } from '../tween';
@@ -113,7 +114,7 @@ export class Moments {
     return this.d.stage.toLocal(this.d.screen.toGlobal(p));
   }
 
-  private shade(alpha: number, color = 0x1a0608) {
+  private shade(alpha: number, color = 0x0a0408) {
     const g = new Graphics().rect(-40, -40, 2000, 1160).fill(color);
     g.alpha = 0;
     void tween(g, { alpha }, 160);
@@ -135,6 +136,21 @@ export class Moments {
       c.scale.set(0.6);
     }
     layer.addChild(c);
+    return c;
+  }
+
+  /** A dark lacquer panel washed with the character's colour and edged in gold. */
+  private luxe(poly: number[], color: number, edge = true) {
+    const g = new Graphics().poly(poly).fill(0x12070c).poly(poly).fill({ color, alpha: 0.34 });
+    // a darker lower half gives the wash some depth
+    const ys = poly.filter((_, i) => i % 2), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const mask = new Graphics().poly(poly).fill(0xffffff);
+    const depth = new Graphics();
+    for (let i = 0; i < 8; i++) depth.rect(-200, y0 + ((y1 - y0) * (i + 4)) / 12, 2400, (y1 - y0) / 12 + 1).fill({ color: 0x000000, alpha: 0.05 * (i + 1) });
+    depth.mask = mask;
+    const c = new Container();
+    c.addChild(g, depth, mask);
+    if (edge) c.addChild(new Graphics().poly(poly).stroke({ width: 4, color: PAL.gold, alpha: 0.9 }));
     return c;
   }
 
@@ -186,7 +202,7 @@ export class Moments {
           const r0 = 150 + Math.random() * 140;
           lines.poly([Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a - w) * 2600, Math.sin(a - w) * 2600, Math.cos(a + w) * 2600, Math.sin(a + w) * 2600]);
         }
-        lines.fill({ color: 0xffffff, alpha: 0.5 });
+        lines.fill({ color: PAL.goldHi, alpha: 0.15 });
         lines.position.set(head.x, head.y);
         lines.alpha = 0;
         root.addChild(shade, lines);
@@ -201,11 +217,12 @@ export class Moments {
         // the band with her portrait and line
         const band = new Container();
         const poly = [-120, 360, 2040, 250, 2040, 690, -120, 800];
-        const g = new Graphics()
-          .poly(poly).fill(c.color)
-          .poly([-120, 384, 2040, 274, 2040, 286, -120, 396]).fill({ color: 0xffffff, alpha: 0.75 })
-          .poly([-120, 772, 2040, 662, 2040, 674, -120, 784]).fill({ color: 0xffffff, alpha: 0.75 });
-        for (let i = 0; i < 14; i++) g.poly([i * 160 - 40, 800, i * 160 + 40, 800, i * 160 + 150, 250, i * 160 + 70, 250]).fill({ color: 0x000000, alpha: 0.06 });
+        const g = this.luxe(poly, c.color, false);
+        g.addChild(new Graphics()
+          .poly([-120, 380, 2040, 270, 2040, 274, -120, 384]).fill(PAL.gold)
+          .poly([-120, 392, 2040, 282, 2040, 284, -120, 394]).fill({ color: PAL.gold, alpha: 0.6 })
+          .poly([-120, 766, 2040, 656, 2040, 658, -120, 768]).fill({ color: PAL.gold, alpha: 0.6 })
+          .poly([-120, 776, 2040, 666, 2040, 670, -120, 780]).fill(PAL.gold));
         const mask = new Graphics().poly(poly).fill(0xffffff);
         const portrait = new Sprite(s.poseTexture('angry'));
         portrait.anchor.set(0.5, 0.39);
@@ -222,7 +239,7 @@ export class Moments {
         await tween(band, { x: 0 }, 230, ease.outCubic);
 
         // "ALL IN" slams in from off screen
-        const title = this.bigWord('ALL IN', 200, 0xffffff, 0x300b0b, FONT_NUM);
+        const title = this.bigWord('ALL IN', 200, PAL.goldHi, 0x2a0a10, FONT_NUM);
         title.skew.x = -0.22;
         title.position.set(2700, 470);
         root.addChild(title);
@@ -250,7 +267,7 @@ export class Moments {
     const at = this.toScreen({ x: s.spot.plate.x, y: s.spot.plate.y - 70 });
     sfx.play('thud', 0.8);
     this.d.camera.shake(6, 200);
-    return stamp(this.d.screen, 'ALL IN', at.x, at.y, { font: FONT_NUM, size: 64, color: 0xffffff, stroke: s.char.color, hold: 280 });
+    return stamp(this.d.screen, 'ALL IN', at.x, at.y, { font: FONT_NUM, size: 64, color: PAL.goldHi, stroke: 0x2a0a10, hold: 280 });
   }
 
   // ---------------- M6 VS ----------------
@@ -280,9 +297,7 @@ export class Moments {
         const s = st.seats[seat];
         const c = new Container();
         const poly = left ? [-80, -40, 1020, -40, 900, 1120, -80, 1120] : [1040, -40, 2000, -40, 2000, 1120, 920, 1120];
-        const g = new Graphics().poly(poly).fill(s.char.color);
-        const shadeG = new Graphics().poly(poly).fill({ color: 0x300b0b, alpha: 0.25 });
-        shadeG.y = 0;
+        const g = this.luxe(poly, s.char.color);
         const mask = new Graphics().poly(poly).fill(0xffffff);
         const pic = new Sprite(s.poseTexture('angry'));
         pic.anchor.set(0.5, 0.39);
@@ -315,8 +330,8 @@ export class Moments {
         for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
         g.stroke({ width: w, color, alpha, join: 'miter' });
       };
-      path(bolt, 34, 0xb9a7f0, 0.45);
-      path(bolt, 10, 0xffffff, 1);
+      path(bolt, 34, PAL.gold, 0.4);
+      path(bolt, 10, PAL.goldHi, 1);
       root.addChild(bolt);
       sfx.play('thunder');
       void this.d.post.flash(0.7, 260);
@@ -363,7 +378,7 @@ export class Moments {
         const c = new Container();
         const x0 = i * w;
         const poly = [x0 + 60, -40, x0 + w + 60, -40, x0 + w - 60, 1120, x0 - 60, 1120];
-        const g = new Graphics().poly(poly).fill(s.char.color).stroke({ width: 10, color: 0xffffff });
+        const g = this.luxe(poly, s.char.color);
         const mask = new Graphics().poly(poly).fill(0xffffff);
         const pic = new Sprite(s.poseTexture('angry'));
         pic.anchor.set(0.5, 0.39);
@@ -662,8 +677,8 @@ export class Moments {
       const s = stage.seats[seat];
       const root = this.layer();
       try {
-        const shade = this.shade(0.5, 0x1a0a2a);
-        const beam = new Graphics().poly([860, -40, 1060, -40, 1300, 1120, 620, 1120]).fill({ color: 0xc89bff, alpha: 0.22 });
+        const shade = this.shade(0.55, 0x12030a);
+        const beam = new Graphics().poly([860, -40, 1060, -40, 1300, 1120, 620, 1120]).fill({ color: 0xff8fa8, alpha: 0.18 });
         beam.blendMode = 'add';
         beam.alpha = 0;
         root.addChild(shade, beam);
@@ -679,7 +694,7 @@ export class Moments {
           ])));
         clones.forEach((c) => (c.rotation %= Math.PI * 2));
         // the stamp, slanted across the cards, with ink flying
-        const word = this.bigWord('BLUFF!', 190, 0xe04fb0, 0xffffff, FONT_NUM);
+        const word = this.bigWord('BLUFF!', 190, 0xff4f7b, 0x1a0408, FONT_NUM);
         word.rotation = -0.2;
         word.position.set(960, 480);
         word.scale.set(3);
@@ -688,10 +703,10 @@ export class Moments {
         for (let i = 0; i < 26; i++) {
           const a = Math.random() * Math.PI * 2;
           const r = 120 + Math.random() * 300;
-          const sz = 4 + Math.random() * 16;
-          ink.ellipse(960 + Math.cos(a) * r, 480 + Math.sin(a) * r * 0.6, sz * (1 + Math.random()), sz);
+          const sz = 3 + Math.random() * 7;
+          ink.poly([0, -sz * 1.6, sz * 0.5, 0, 0, sz * 1.6, -sz * 0.5, 0].map((v, j) => v + (j % 2 ? 480 + Math.sin(a) * r * 0.6 : 960 + Math.cos(a) * r)));
         }
-        ink.fill({ color: 0x4b1a6f, alpha: 0.85 });
+        ink.fill({ color: PAL.goldHi, alpha: 0.9 });
         ink.alpha = 0;
         root.addChild(ink, word);
         await Promise.all([tween(word.scale, { x: 1, y: 1 }, 170, ease.inCubic), tween(word, { alpha: 1 }, 100)]);
@@ -900,8 +915,8 @@ export class Moments {
         // the sash
         const sc = s.spot.height / 600;
         const ribbon = new Graphics()
-          .poly([-250, -36, 250, -36, 276, 0, 250, 36, -250, 36, -276, 0]).fill(0xd6334a).stroke({ width: 5, color: 0xffffff })
-          .rect(-250, -26, 500, 4).fill(0xffd36b).rect(-250, 22, 500, 4).fill(0xffd36b);
+          .poly([-250, -36, 250, -36, 276, 0, 250, 36, -250, 36, -276, 0]).fill(0x7a0f22).stroke({ width: 4, color: PAL.gold })
+          .rect(-250, -26, 500, 2).fill(PAL.goldHi).rect(-250, 24, 500, 2).fill(PAL.goldHi);
         const word = new Text({ text: '本局主役', style: { fontFamily: FONT_BRUSH, fontSize: 58, fill: 0xffe08a, stroke: { color: 0x5b2324, width: 6 }, letterSpacing: 10 } });
         word.anchor.set(0.5);
         const reveal = new Graphics().rect(-290, -50, 580, 100).fill(0xffffff);
@@ -985,7 +1000,7 @@ export class EquityBars {
       const y = duel ? 172 : 150 + i * 50;
       const w = duel ? 640 : 520;
       const h = duel ? 36 : 28;
-      const name = new Text({ text: e.name, style: { fontFamily: FONT_BRUSH, fontSize: duel ? 44 : 32, fill: 0xffffff, stroke: { color: 0x300b0b, width: 6 } } });
+      const name = new Text({ text: e.name, style: { fontFamily: FONT_BRUSH, fontSize: duel ? 44 : 32, fill: PAL.ivory, stroke: { color: 0x0a0408, width: 6 } } });
       const pctText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: duel ? 30 : 24, fill: 0xffd36b, stroke: { color: 0x300b0b, width: 5 } } });
       if (duel) {
         name.anchor.set(left ? 0 : 1, 1);
@@ -1006,7 +1021,7 @@ export class EquityBars {
       box.addChild(frame, dmg, fill, flash, name, pctText);
       this.root.addChild(box);
       const row: BarRow = { seat: e.seat, color: e.color, x, y, w, h, dir: duel && !left ? -1 : 1, frame, dmg, fill, flash, pctText, box, shown: 0, dmgShown: 0 };
-      this.drawSeg(frame, row, 1, 0x300b0b, 0.75, true);
+      this.drawSeg(frame, row, 1, 0x0a0408, 0.85, true);
       this.drawSeg(flash, row, 1, 0xff3b4a, 0.9);
       this.rows.push(row);
     });
@@ -1029,12 +1044,12 @@ export class EquityBars {
     const x0 = r.dir === 1 ? r.x : r.x + r.w - len;
     const x1 = x0 + len;
     g.poly([x0 + s, r.y, x1 + s, r.y, x1, r.y + r.h, x0, r.y + r.h]).fill({ color, alpha });
-    if (border) g.poly([r.x + s, r.y, r.x + r.w + s, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h]).stroke({ width: 4, color: 0xffffff });
+    if (border) g.poly([r.x + s, r.y, r.x + r.w + s, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h]).stroke({ width: 3, color: PAL.gold });
     else g.rect(Math.min(x0, x1) + s * 0.6, r.y + 4, Math.max(0, len - s * 0.4), 5).fill({ color: 0xffffff, alpha: 0.35 * alpha });
   }
 
   private paint(r: BarRow) {
-    this.drawSeg(r.dmg, r, r.dmgShown, 0xfff7f2);
+    this.drawSeg(r.dmg, r, r.dmgShown, PAL.ivory);
     this.drawSeg(r.fill, r, r.shown, r.color);
     r.pctText.text = `${(r.shown * 100).toFixed(r.shown >= 0.9995 || r.shown < 0.0005 ? 0 : 1)}%`;
   }

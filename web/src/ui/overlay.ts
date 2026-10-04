@@ -357,7 +357,7 @@ export class Overlay {
         <div class="daily"><b>今日任务</b><span>打完 1 局段位赛</span><span>发现 1 个破绽</span></div>
         <button class="round gear">设置</button>
       </div>
-      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">ANIME HOLD'EM</div></div>
+      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">ROYAL NIGHT · HOLD'EM</div></div>
       <div class="modes">
         <button class="poster ranked"><span class="tape"></span>
           <b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位</small>
@@ -849,7 +849,7 @@ export class Overlay {
           sfx.play('cheer', 0.9);
           this.modal.querySelector('.fin')!.classList.add('crowned');
           const box = q<HTMLElement>('.confetti');
-          const colors = ['#ffd36b', '#f69375', '#e04fb0', '#52c0cf', '#b9a7f0', '#fff'];
+          const colors = ['#ffe3a3', '#e8c27a', '#c9a25a', '#f6ecd9', '#b81d3c', '#fff'];
           box.innerHTML = Array.from({ length: 70 }, (_, k) =>
             `<i style="left:${Math.random() * 100}%;background:${colors[k % colors.length]};animation-delay:${Math.random() * 0.8}s;animation-duration:${2.2 + Math.random() * 1.6}s;transform:rotate(${Math.random() * 360}deg)"></i>`).join('');
         }

@@ -8,26 +8,44 @@ import { type Face, makeSticker } from '../fx/stickers';
 import { CardSprite } from '../table/CardSprite';
 import { FONT, FONT_BRUSH, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
-import { type Pose, paintGlow } from './painter';
+import { CHIP_COLORS, PAL, type Pose, paintGlow } from './painter';
 
 let glowTex: Texture | null = null;
 
-/** A stack of chips whose height grows with the amount. */
+/** A stack of chips whose height grows with the amount: each chip has a thickness,
+ *  edge stripes and a lit top; the whole stack throws a shadow on the felt. */
 export function chipStack(amount: number, unit: number, scale = 1): Container {
   const c = new Container();
   const n = Math.max(1, Math.min(12, Math.round(Math.log2(Math.max(1, amount / Math.max(1, unit))) + 1)));
-  const w = 26 * scale, h = 9 * scale, step = 6 * scale;
+  const w = 26 * scale, h = 9 * scale, t = 6 * scale; // radius x, radius y, thickness
   const g = new Graphics();
+  g.ellipse(4 * scale, 5 * scale, w * 1.15, h * 1.3).fill({ color: 0x000000, alpha: 0.35 });
+  // bigger amounts get the darker, rarer colours on top
+  const order = [2, 1, 0, 3];
   for (let i = 0; i < n; i++) {
-    const y = -i * step;
-    const col = i % 3 === 2 ? 0xd6334a : i % 2 ? 0xf7f2ee : 0x1e1a22;
-    g.ellipse(0, y + 3 * scale, w, h).fill(0x0e0a10);
-    g.rect(-w, y - 1, w * 2, 4 * scale).fill(0x0e0a10);
-    g.ellipse(0, y, w, h).fill(col);
+    const y = -i * t;
+    const [face, spot] = CHIP_COLORS[order[Math.min(order.length - 1, Math.floor((i / n) * 2 + (n > 6 ? 1 : 0)) + (i % 2))]];
+    const dark = shade(face, 0.55);
+    // side
+    g.rect(-w, y - t, w * 2, t).fill(dark);
+    g.ellipse(0, y, w, h).fill(dark);
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI + 0.25;
+      const sx = Math.cos(a) * w;
+      g.rect(sx - 2.5 * scale, y - t + 1, 5 * scale, t - 1).fill({ color: spot, alpha: 0.85 });
+    }
+    // top
+    g.ellipse(0, y - t, w, h).fill(face);
+    g.ellipse(0, y - t, w * 0.8, h * 0.8).stroke({ width: 2.2 * scale, color: spot, alpha: 0.9 });
+    g.ellipse(-w * 0.25, y - t - h * 0.25, w * 0.45, h * 0.3).fill({ color: 0xffffff, alpha: 0.12 });
   }
-  g.ellipse(0, -(n - 1) * step, w * 0.62, h * 0.6).stroke({ width: 3 * scale, color: n % 2 ? 0x1e1a22 : 0xf7f2ee, alpha: 0.8 });
   c.addChild(g);
   return c;
+}
+
+function shade(c: number, k: number): number {
+  const r = ((c >> 16) & 255) * k, g = ((c >> 8) & 255) * k, b = (c & 255) * k;
+  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
 }
 
 export class Seat extends Container {
@@ -110,21 +128,22 @@ export class Seat extends Container {
     // Paper name plate taped to the rim.
     const pw = isHero ? 210 : 190, ph = 62;
     const paper = new Graphics()
-      .roundRect(-pw / 2 + 3, -ph / 2 + 5, pw, ph, 12).fill({ color: 0x300b0b, alpha: 0.35 })
-      .roundRect(-pw / 2, -ph / 2, pw, ph, 12).fill(0xfbf1ea)
-      .rect(-pw / 2, -ph / 2, 10, ph).fill(char.color);
-    const tape = new Graphics().rect(-26, -ph / 2 - 9, 52, 18).fill({ color: 0xffd36b, alpha: 0.85 });
-    const name = new Text({ text: char.name, style: { fontFamily: FONT_DISPLAY, fontSize: 24, fill: 0x5b2324 } });
+      .roundRect(-pw / 2 + 2, -ph / 2 + 6, pw, ph, 8).fill({ color: 0x000000, alpha: 0.45 })
+      .roundRect(-pw / 2, -ph / 2, pw, ph, 8).fill({ color: 0x120c10, alpha: 0.92 })
+      .roundRect(-pw / 2, -ph / 2, pw, ph, 8).stroke({ width: 2, color: PAL.gold, alpha: 0.85 })
+      .roundRect(-pw / 2 + 4, -ph / 2 + 4, pw - 8, ph - 8, 5).stroke({ width: 1, color: PAL.gold, alpha: 0.3 })
+      .rect(-pw / 2 + 4, -ph / 2 + 8, 4, ph - 16).fill(char.color);
+    const name = new Text({ text: char.name, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 23, fill: PAL.ivory } });
     name.anchor.set(0, 0.5);
-    name.position.set(-pw / 2 + 20, -11);
-    this.stackText = new Text({ text: '0', style: { fontFamily: FONT_NUM, fontSize: 22, fill: 0x943a3f } });
+    name.position.set(-pw / 2 + 18, -12);
+    this.stackText = new Text({ text: '0', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: PAL.gold } });
     this.stackText.anchor.set(0, 0.5);
-    this.stackText.position.set(-pw / 2 + 20, 15);
-    this.plate.addChild(paper, tape, name, this.stackText);
+    this.stackText.position.set(-pw / 2 + 18, 14);
+    this.plate.addChild(paper, name, this.stackText);
     this.plate.position.set(spot.plate.x, spot.plate.y);
     this.plate.rotation = spot.plateTilt;
 
-    this.tag = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontSize: 22, fill: 0xffffff, stroke: { color: 0x300b0b, width: 5 } } });
+    this.tag = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 21, fill: 0xffffff, stroke: { color: 0x0a0608, width: 5 } } });
     this.tag.anchor.set(0.5);
     this.tag.position.set(spot.plate.x, spot.plate.y - ph / 2 - 22);
 
@@ -144,12 +163,12 @@ export class Seat extends Container {
     });
 
     // Bet
-    this.betText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: 20, fill: 0xffffff, stroke: { color: 0x300b0b, width: 5 } } });
+    this.betText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 20, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 5 } } });
     this.betText.anchor.set(0, 0.5);
     this.betBox.position.set(spot.bet.x, spot.bet.y);
     this.betBox.visible = false;
 
-    this.handLabel = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontSize: isHero ? 34 : 26, fill: 0xffe08a, stroke: { color: 0x300b0b, width: 7 } } });
+    this.handLabel = new Text({ text: '', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: isHero ? 34 : 26, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 7 } } });
     this.handLabel.anchor.set(0.5);
     this.handLabel.position.set(isHero ? spot.cards.x + 100 : spot.cards.x, isHero ? spot.cards.y - 175 : spot.cards.y + 60);
 
@@ -157,7 +176,7 @@ export class Seat extends Container {
     this.badge.visible = false;
     this.exprChip.position.set(this.head.x - spot.height * 0.2, this.head.y - spot.height * 0.3);
     this.caption.position.set(this.head.x, this.head.y + spot.height * 0.12);
-    this.thinking = new Text({ text: '', style: { fontFamily: FONT_NUM, fontSize: 22, fill: 0xffe08a, stroke: { color: 0x300b0b, width: 5 } } });
+    this.thinking = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: PAL.goldHi, stroke: { color: 0x0a0608, width: 5 } } });
     this.thinking.anchor.set(0.5);
     this.thinking.position.set(spot.plate.x, spot.plate.y - ph / 2 - 50);
     const toCenter = { x: 960 - this.head.x, y: 560 - this.head.y };
@@ -252,7 +271,7 @@ export class Seat extends Container {
     const x0 = this.plate.x;
     void animate(320, (p) => (this.plate.x = x0 + Math.sin(p * Math.PI * 8) * 7 * (1 - p)), ease.linear);
     if (!this.isHero) this.setPose(Math.random() < 0.5 ? 'angry' : 'shock');
-    const t = new Text({ text: '被骗了！', style: { fontFamily: FONT_DISPLAY, fontSize: 28, fill: 0xffffff, stroke: { color: 0x7a2a8f, width: 6 } } });
+    const t = new Text({ text: '被骗了！', style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 28, fill: 0xffffff, stroke: { color: 0x7a2a8f, width: 6 } } });
     t.anchor.set(0.5);
     t.position.set(this.spot.plate.x, this.spot.plate.y - 50);
     t.rotation = (Math.random() - 0.5) * 0.3;
@@ -371,7 +390,7 @@ export class Seat extends Container {
     this.setTag(place, 0xbfb8e6);
     this.cards.forEach((c) => (c.visible = false));
     this.outStamp.removeChildren().forEach((c) => c.destroy());
-    const t = new Text({ text: `OUT · ${place.replace(/[^0-9]/g, '')}`, style: { fontFamily: FONT_NUM, fontSize: 40, fill: 0xd6334a, stroke: { color: 0xfbf1ea, width: 8 } } });
+    const t = new Text({ text: `OUT · ${place.replace(/[^0-9]/g, '')}`, style: { fontFamily: FONT_NUM, fontWeight: '900', fontSize: 40, fill: 0xd02a48, stroke: { color: 0x0a0608, width: 8 } } });
     t.anchor.set(0.5);
     t.rotation = -0.2;
     this.outStamp.addChild(t);
@@ -452,6 +471,7 @@ export class Seat extends Container {
   showHand(text: string | null, brush = false) {
     this.handLabel.text = text ?? '';
     this.handLabel.style.fontFamily = brush ? FONT_BRUSH : FONT_DISPLAY;
+    this.handLabel.style.fontWeight = brush ? 'normal' : '900';
     this.handLabel.style.fontSize = brush ? (this.isHero ? 52 : 40) : this.isHero ? 34 : 26;
     if (!brush || !text) {
       this.handMask.clear().rect(-400, -60, 800, 120).fill(0xffffff);
@@ -473,9 +493,9 @@ export class Seat extends Container {
     this.badge.removeChildren().forEach((c) => c.destroy());
     this.badge.visible = pct !== null;
     if (pct === null) return;
-    const label = new Text({ text: `胜率 ${pct.toFixed(pct >= 99.95 || pct < 0.05 ? 0 : 1)}%`, style: { fontFamily: FONT_NUM, fontSize: 22, fill: 0xffffff } });
+    const label = new Text({ text: `胜率 ${pct.toFixed(pct >= 99.95 || pct < 0.05 ? 0 : 1)}%`, style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: 0xffffff } });
     label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 14, -20, label.width + 28, 40, 20).fill(pct >= 50 ? 0x2a8e9e : 0x943a3f).stroke({ width: 3, color: 0xffffff });
+    const bg = new Graphics().roundRect(-label.width / 2 - 14, -19, label.width + 28, 38, 6).fill(pct >= 50 ? 0x17574b : 0x6e0f22).stroke({ width: 2, color: PAL.gold });
     this.badge.addChild(bg, label);
   }
 
@@ -485,9 +505,9 @@ export class Seat extends Container {
     this.restPose();
     this.exprChip.removeChildren().forEach((c) => c.destroy());
     if (e === Expression.Calm) return;
-    const label = new Text({ text: EXPRESSION_LABEL[e], style: { fontFamily: FONT_DISPLAY, fontSize: 22, fill: 0xffffff } });
-    label.position.set(12, 4);
-    const bg = new Graphics().roundRect(0, 0, label.width + 24, 34, 17).fill(EXPRESSION_COLOR[e]).stroke({ width: 3, color: 0xffffff });
+    const label = new Text({ text: EXPRESSION_LABEL[e], style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 20, fill: 0xffffff } });
+    label.position.set(12, 5);
+    const bg = new Graphics().roundRect(0, 0, label.width + 24, 34, 6).fill({ color: 0x120c10, alpha: 0.9 }).stroke({ width: 2, color: EXPRESSION_COLOR[e] });
     this.exprChip.addChild(bg, label);
     this.exprChip.scale.set(1.4);
     void tween(this.exprChip.scale, { x: 1, y: 1 }, 220, ease.outBack);
@@ -497,7 +517,7 @@ export class Seat extends Container {
     this.caption.removeChildren().forEach((c) => c.destroy());
     const label = new Text({ text, style: { fontFamily: FONT, fontSize: 20, fontWeight: '700', fill: 0xffffff } });
     label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 14, -18, label.width + 28, 36, 18).fill({ color: 0x300b0b, alpha: 0.85 });
+    const bg = new Graphics().roundRect(-label.width / 2 - 14, -18, label.width + 28, 36, 6).fill({ color: 0x0a0608, alpha: 0.85 }).stroke({ width: 1.5, color: PAL.gold, alpha: 0.6 });
     this.caption.addChild(bg, label);
     this.caption.alpha = 0;
     const y0 = this.head.y + this.spot.height * 0.12;
@@ -547,15 +567,16 @@ export class Seat extends Container {
 
   say(text: string, ms = 1800, toName?: string) {
     this.bubble.removeChildren().forEach((c) => c.destroy());
-    const label = new Text({ text: toName ? `→${toName}  ${text}` : text, style: { fontFamily: FONT, fontSize: 24, fontWeight: '700', fill: 0x5b2324, wordWrap: true, wordWrapWidth: 300, breakWords: true } });
+    const label = new Text({ text: toName ? `→${toName}  ${text}` : text, style: { fontFamily: FONT, fontSize: 24, fontWeight: '700', fill: PAL.ivory, wordWrap: true, wordWrapWidth: 300, breakWords: true } });
     const pw = label.width + 32, ph = label.height + 20;
     const ax = this.isHero ? this.head.x + 90 : this.head.x;
     const top = this.isHero ? this.head.y - 230 : this.head.y - this.spot.height * 0.42 - ph;
     const left = Math.min(Math.max(ax - pw / 2, 40), 1880 - pw);
     const bg = new Graphics()
-      .roundRect(4, 6, pw, ph, 18).fill({ color: 0x300b0b, alpha: 0.3 })
-      .roundRect(0, 0, pw, ph, 18).fill(0xffffff).stroke({ width: 4, color: this.char.color })
-      .poly([ax - left - 12, ph - 2, ax - left + 12, ph - 2, ax - left, ph + 18]).fill(0xffffff);
+      .roundRect(4, 6, pw, ph, 10).fill({ color: 0x000000, alpha: 0.4 })
+      .poly([ax - left - 12, ph - 2, ax - left + 12, ph - 2, ax - left, ph + 18]).fill({ color: 0x140c12, alpha: 0.95 })
+      .roundRect(0, 0, pw, ph, 10).fill({ color: 0x140c12, alpha: 0.95 }).stroke({ width: 2.5, color: this.char.color })
+      .roundRect(3, 3, pw - 6, ph - 6, 8).stroke({ width: 1, color: PAL.gold, alpha: 0.35 });
     label.position.set(16, 10);
     this.bubble.addChild(bg, label);
     this.bubble.position.set(left, Math.max(8, top));

@@ -27,7 +27,8 @@ import { Overlay, PLACE_POINTS } from './ui/overlay';
 const BRUSH_TEXT = '胜负揭晓高牌一对两对三条顺子同花葫芦四条同花顺皇家冤家牌本局主役混战到带大和AKQJT98765432';
 await Promise.race([
   Promise.all([
-    ...['40px "ZCOOL QingKe HuangYou"', '40px "Dela Gothic One"', '700 40px "Noto Sans SC"'].map((f) => document.fonts.load(f)),
+    ...['700 40px "Cinzel"', '900 40px "Noto Serif SC"', '700 40px "Noto Sans SC"'].map((f) => document.fonts.load(f)),
+    document.fonts.load('900 40px "Noto Serif SC"', '牌桌心理战段位赛单人练习好友房弃牌跟注加注过牌下注全下底池胜负揭晓'),
     document.fonts.load('40px "Ma Shan Zheng"', BRUSH_TEXT),
   ]),
   new Promise((r) => setTimeout(r, 2500)),
@@ -183,7 +184,7 @@ async function showHome() {
   const mascot = CAST[4];
   const [bg, poses] = await Promise.all([loadBackground('lobby', { x: 1300, y: 380 }), loadPoses(characterId(4), mascot)]);
   music.play('lobby');
-  lobby = new Lobby(bg, poses.win, mascot, particles, worldFx);
+  lobby = new Lobby(bg, poses.smug, mascot, particles, worldFx);
   world.addChild(lobby);
   const profile = loadProfile();
   const handlers = {

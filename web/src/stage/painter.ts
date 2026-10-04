@@ -1,7 +1,10 @@
 // Procedural placeholder art, painted once into canvases and used as textures.
 // Every piece here is replaced automatically when a matching PNG is dropped into
-// web/public/art/ (see assets.ts and docs/08 §6). The look follows docs/07: warm
-// coral casino light, a teal table as the only cool colour, soft haze and bloom.
+// web/public/art/ (see assets.ts and docs/08 §6).
+//
+// The look follows docs/10 ("gilded night"): a dark, luxurious casino lounge, warm gold
+// chandeliers, one spotlight on an emerald table, black leather and gold trim.
+// Until the character art arrives, the players are silhouettes with rim light.
 
 export type Pose = 'idle' | 'smug' | 'nervous' | 'angry' | 'shock' | 'cry' | 'win';
 export type HairStyle = 'bob' | 'long' | 'twin' | 'short' | 'fox';
@@ -11,11 +14,29 @@ export interface Look {
   hair: HairStyle;
 }
 
+/** The palette (docs/10 §2). */
+export const PAL = {
+  night: 0x0d080c,
+  plum: 0x1c0e18,
+  wine: 0x3a0f1c,
+  crimson: 0xb81d3c,
+  gold: 0xe8c27a,
+  goldHi: 0xffe3a3,
+  goldLo: 0x8a6a2f,
+  ivory: 0xf6ecd9,
+  felt: 0x17574b,
+  feltHi: 0x2f8f7a,
+  leather: 0x1a1112,
+};
+
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 function mix(c: number, to: number, t: number): string {
   const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
   const R = (to >> 16) & 255, G = (to >> 8) & 255, B = to & 255;
   return `rgb(${Math.round(r + (R - r) * t)},${Math.round(g + (G - g) * t)},${Math.round(b + (B - b) * t)})`;
+}
+function rgba(c: number, a: number): string {
+  return `rgba(${(c >> 16) & 255},${(c >> 8) & 255},${c & 255},${a})`;
 }
 
 function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -34,77 +55,160 @@ function seeded(seed: number) {
 // Room
 // ---------------------------------------------------------------------------
 
-/** The casino around the table (or the lobby): warm light, light strips converging
- *  on a vanishing point, blurred slot machines and bokeh, haze. */
+/** A dark casino lounge: wine walls with gilded art-deco pilasters, velvet curtains,
+ *  chandeliers glowing above, warm bokeh far away. `vp` is where the eye rests. */
 export function paintRoom(w: number, h: number, vp: { x: number; y: number }, seed = 7): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const rnd = seeded(seed);
   const bg = g.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, '#FFD9BC');
-  bg.addColorStop(0.38, '#F69375');
-  bg.addColorStop(0.72, '#9E595E');
-  bg.addColorStop(1, '#3A1015');
+  bg.addColorStop(0, '#120810');
+  bg.addColorStop(0.35, '#2a0d1a');
+  bg.addColorStop(0.62, '#200a14');
+  bg.addColorStop(1, '#09050a');
   g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
 
-  // Ceiling: rows of glowing panels in perspective.
-  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-  for (let row = 0; row < 7; row++) {
-    const t0 = row / 7, t1 = (row + 0.55) / 7;
-    for (let col = -6; col <= 6; col++) {
-      const x0 = col * 400, x1 = col * 400 + 250;
-      const pt = (x: number, t: number): [number, number] => [lerp(vp.x + x, vp.x, t), lerp(-40, vp.y - 50, t)];
+  // warm glow behind the focus
+  const glow = g.createRadialGradient(vp.x, vp.y, 20, vp.x, vp.y, w * 0.55);
+  glow.addColorStop(0, 'rgba(255,190,120,0.30)');
+  glow.addColorStop(0.4, 'rgba(180,70,60,0.14)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, w, h);
+
+  // Back wall: gilded pilasters and arches, slightly out of focus.
+  g.filter = 'blur(3px)';
+  const wallTop = h * 0.12, wallBot = h * 0.62;
+  for (let i = 0; i < 9; i++) {
+    const x = (i + 0.5) * (w / 9);
+    const gr = g.createLinearGradient(x - 18, 0, x + 18, 0);
+    gr.addColorStop(0, rgba(PAL.goldLo, 0));
+    gr.addColorStop(0.5, rgba(PAL.gold, 0.28));
+    gr.addColorStop(1, rgba(PAL.goldLo, 0));
+    g.fillStyle = gr;
+    g.fillRect(x - 18, wallTop, 36, wallBot - wallTop);
+    // fluting
+    g.strokeStyle = rgba(PAL.goldHi, 0.12);
+    g.lineWidth = 2;
+    for (const dx of [-8, 0, 8]) {
       g.beginPath();
-      g.moveTo(...pt(x0, t0));
-      g.lineTo(...pt(x1, t0));
-      g.lineTo(...pt(x1, t1));
-      g.lineTo(...pt(x0, t1));
-      g.closePath();
-      g.fillStyle = `rgba(255,246,236,${0.72 - row * 0.08})`;
-      g.shadowColor = '#FFF4EA';
-      g.shadowBlur = 30;
-      g.fill();
+      g.moveTo(x + dx, wallTop + 20);
+      g.lineTo(x + dx, wallBot - 20);
+      g.stroke();
+    }
+    // arch between pilasters
+    if (i < 8) {
+      const ax = x + w / 18;
+      g.strokeStyle = rgba(PAL.gold, 0.16);
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(ax, wallTop + 120, w / 18 - 26, Math.PI, 0);
+      g.stroke();
+      // sunburst inside the arch
+      g.strokeStyle = rgba(PAL.gold, 0.07);
+      g.lineWidth = 2;
+      for (let k = 1; k < 8; k++) {
+        const a = Math.PI + (k / 8) * Math.PI;
+        g.beginPath();
+        g.moveTo(ax, wallTop + 120);
+        g.lineTo(ax + Math.cos(a) * (w / 18 - 30), wallTop + 120 + Math.sin(a) * (w / 18 - 30));
+        g.stroke();
+      }
     }
   }
-  g.shadowBlur = 0;
+  // a gold cornice line
+  g.fillStyle = rgba(PAL.gold, 0.2);
+  g.fillRect(0, wallTop - 6, w, 4);
+  g.filter = 'none';
 
-  // Pillars of light
-  for (const x of [w * 0.12, w * 0.88]) {
-    const gr = g.createLinearGradient(x - 70, 0, x + 70, 0);
-    gr.addColorStop(0, 'rgba(255,240,225,0)');
-    gr.addColorStop(0.5, 'rgba(255,240,225,0.5)');
-    gr.addColorStop(1, 'rgba(255,240,225,0)');
-    g.fillStyle = gr;
-    g.fillRect(x - 70, h * 0.1, 140, h * 0.5);
+  // Far away: tables, people and slot lights, all bokeh.
+  g.filter = 'blur(14px)';
+  for (let i = 0; i < 12; i++) {
+    g.globalAlpha = 0.5;
+    g.fillStyle = i % 2 ? '#3a1222' : '#170910';
+    g.beginPath();
+    g.ellipse(rnd() * w, h * 0.6 + rnd() * h * 0.08, 90 + rnd() * 80, 40 + rnd() * 30, 0, 0, Math.PI * 2);
+    g.fill();
   }
-
-  // Far casino: slot machines, neon and bokeh, out of focus.
-  g.filter = 'blur(10px)';
-  for (let i = 0; i < 9; i++) {
-    const x = 40 + i * (w / 9) + rnd() * 30;
-    g.globalAlpha = 0.55;
-    g.fillStyle = i % 2 ? '#684054' : '#5B2324';
-    g.fillRect(x, h * 0.4, 120, h * 0.2);
-    g.fillStyle = i % 3 ? '#52C0CF' : '#E04FB0';
-    g.fillRect(x + 20, h * 0.42, 80, 46);
-  }
-  const bokeh = ['#FFE3C8', '#F5E6E7', '#B46997', '#52C0CF', '#FFD36B', '#E04FB0'];
-  for (let i = 0; i < 80; i++) {
-    g.globalAlpha = 0.3 + rnd() * 0.5;
+  const bokeh = ['#FFD9A0', '#FFB870', '#E8C27A', '#FF8A6A', '#C24A6A', '#FFF0D0'];
+  for (let i = 0; i < 70; i++) {
+    g.globalAlpha = 0.18 + rnd() * 0.4;
     g.fillStyle = bokeh[Math.floor(rnd() * bokeh.length)];
     g.beginPath();
-    g.arc(rnd() * w, h * 0.22 + rnd() * h * 0.3, 8 + rnd() * 34, 0, Math.PI * 2);
+    g.arc(rnd() * w, h * 0.3 + rnd() * h * 0.32, 6 + rnd() * 30, 0, Math.PI * 2);
     g.fill();
   }
   g.globalAlpha = 1;
   g.filter = 'none';
 
-  // Haze around the vanishing point
-  const hz = g.createRadialGradient(vp.x, vp.y, 30, vp.x, vp.y, w * 0.45);
-  hz.addColorStop(0, 'rgba(255,244,234,0.55)');
-  hz.addColorStop(1, 'rgba(255,244,234,0)');
-  g.fillStyle = hz;
-  g.fillRect(0, 0, w, h);
+  // Chandeliers: a warm halo, a crown of crystals, sparkle.
+  const chands = [0.18, 0.5, 0.82].map((t) => ({ x: w * t + (rnd() - 0.5) * 60, y: h * (0.06 + rnd() * 0.05) }));
+  for (const ch of chands) {
+    const halo = g.createRadialGradient(ch.x, ch.y, 4, ch.x, ch.y, 260);
+    halo.addColorStop(0, 'rgba(255,236,190,0.75)');
+    halo.addColorStop(0.25, 'rgba(255,200,120,0.25)');
+    halo.addColorStop(1, 'rgba(255,170,90,0)');
+    g.fillStyle = halo;
+    g.fillRect(ch.x - 280, ch.y - 280, 560, 560);
+    g.filter = 'blur(1.5px)';
+    for (let k = 0; k < 40; k++) {
+      const a = rnd() * Math.PI;
+      const r = 20 + rnd() * 90;
+      g.fillStyle = rnd() < 0.3 ? '#FFFFFF' : '#FFE3A3';
+      g.globalAlpha = 0.5 + rnd() * 0.5;
+      g.beginPath();
+      g.arc(ch.x + Math.cos(a) * r, ch.y + Math.sin(a) * r * 0.55, 1.5 + rnd() * 2.5, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    g.filter = 'none';
+  }
+
+  // Velvet curtains at both edges.
+  for (const side of [0, 1]) {
+    const x0 = side ? w - 210 : 0;
+    for (let f = 0; f < 6; f++) {
+      const fx = x0 + f * 35;
+      const gr = g.createLinearGradient(fx, 0, fx + 35, 0);
+      gr.addColorStop(0, '#2a0510');
+      gr.addColorStop(0.5, f % 2 ? '#6e0f22' : '#58091b');
+      gr.addColorStop(1, '#22040c');
+      g.fillStyle = gr;
+      g.fillRect(fx, 0, 36, h);
+    }
+    const fade = g.createLinearGradient(side ? w - 210 : 210, 0, side ? w - 320 : 320, 0);
+    fade.addColorStop(0, 'rgba(10,3,6,0.55)');
+    fade.addColorStop(1, 'rgba(10,3,6,0)');
+    g.fillStyle = fade;
+    g.fillRect(side ? w - 320 : 210, 0, 110, h);
+  }
+
+  // haze and a darker floor
+  const floor = g.createLinearGradient(0, h * 0.55, 0, h);
+  floor.addColorStop(0, 'rgba(8,3,6,0)');
+  floor.addColorStop(1, 'rgba(8,3,6,0.85)');
+  g.fillStyle = floor;
+  g.fillRect(0, h * 0.55, w, h * 0.45);
+  return c;
+}
+
+/** A soft cone of light from above onto the table (drawn additively). */
+export function paintBeam(w: number, h: number, x: number, top: number, bottom: number, spread: number): HTMLCanvasElement {
+  const [c, g] = canvas(w, h);
+  const gr = g.createLinearGradient(0, top, 0, bottom);
+  gr.addColorStop(0, 'rgba(255,230,180,0.0)');
+  gr.addColorStop(0.25, 'rgba(255,225,170,0.10)');
+  gr.addColorStop(1, 'rgba(255,215,150,0.18)');
+  g.filter = 'blur(30px)';
+  g.fillStyle = gr;
+  g.beginPath();
+  g.moveTo(x - 120, top);
+  g.lineTo(x + 120, top);
+  g.lineTo(x + spread, bottom);
+  g.lineTo(x - spread, bottom);
+  g.closePath();
+  g.fill();
+  g.filter = 'none';
   return c;
 }
 
@@ -114,268 +218,342 @@ export function paintRoom(w: number, h: number, vp: { x: number; y: number }, se
 
 export const TABLE = { cx: 960, cy: 1010, rx: 1180, ry: 470 };
 
-/** The table seen from the player's seat: wooden rim, teal felt, printed line. */
+/** The table seen from the player's seat: black leather rail with a gold inlay,
+ *  emerald felt lit by a spotlight over the board, a gilded betting line. */
 export function paintTable(w: number, h: number): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const { cx, cy, rx, ry } = TABLE;
-  g.fillStyle = 'rgba(30,6,8,0.55)';
-  g.filter = 'blur(18px)';
-  g.beginPath();
-  g.ellipse(cx, cy - 10, rx + 30, ry + 30, 0, 0, Math.PI * 2);
+  const ell = (dx: number, dy: number, a0 = 0, a1 = Math.PI * 2, oy = 0) => {
+    g.beginPath();
+    g.ellipse(cx, cy + oy, rx - dx, ry - dy, 0, a0, a1);
+  };
+  // shadow on the floor
+  g.fillStyle = 'rgba(0,0,0,0.6)';
+  g.filter = 'blur(24px)';
+  ell(-40, -40, 0, Math.PI * 2, -10);
   g.fill();
   g.filter = 'none';
-  const rim = g.createLinearGradient(0, cy - ry, 0, cy - ry + 120);
-  rim.addColorStop(0, '#D06A62');
-  rim.addColorStop(0.4, '#943A3F');
-  rim.addColorStop(1, '#4A1418');
+
+  // leather rail
+  const rim = g.createLinearGradient(0, cy - ry, 0, cy - ry + 110);
+  rim.addColorStop(0, '#4a2f2a');
+  rim.addColorStop(0.18, '#2a1a18');
+  rim.addColorStop(1, '#0c0707');
   g.fillStyle = rim;
-  g.beginPath();
-  g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ell(0, 0);
   g.fill();
-  // rim highlight
-  g.strokeStyle = 'rgba(255,220,200,0.45)';
+  // stitching and specular along the rail
+  g.strokeStyle = 'rgba(255,235,210,0.28)';
   g.lineWidth = 3;
-  g.beginPath();
-  g.ellipse(cx, cy, rx - 4, ry - 4, 0, Math.PI * 1.06, Math.PI * 1.94);
+  ell(10, 8, Math.PI * 1.05, Math.PI * 1.95);
   g.stroke();
-  const felt = g.createRadialGradient(cx, cy - ry + 160, 40, cx, cy, rx);
-  felt.addColorStop(0, '#9BE8EE');
-  felt.addColorStop(0.35, '#52C0CF');
-  felt.addColorStop(1, '#1D6E7C');
+  g.setLineDash([7, 9]);
+  g.strokeStyle = rgba(PAL.gold, 0.25);
+  g.lineWidth = 1.5;
+  ell(26, 22, Math.PI * 1.03, Math.PI * 1.97);
+  g.stroke();
+  g.setLineDash([]);
+
+  // gold inlay between rail and felt
+  g.strokeStyle = rgba(PAL.gold, 0.95);
+  g.lineWidth = 5;
+  g.shadowColor = rgba(PAL.goldHi, 0.8);
+  g.shadowBlur = 14;
+  ell(40, 47, 0, Math.PI * 2, 6);
+  g.stroke();
+  g.shadowBlur = 0;
+
+  // felt with the spotlight pool over the board
+  const felt = g.createRadialGradient(cx, cy - 250, 30, cx, cy - 120, rx * 0.95);
+  felt.addColorStop(0, hex(0x3aa38a));
+  felt.addColorStop(0.22, hex(PAL.feltHi));
+  felt.addColorStop(0.55, hex(PAL.felt));
+  felt.addColorStop(1, '#051c17');
   g.fillStyle = felt;
-  g.beginPath();
-  g.ellipse(cx, cy + 6, rx - 45, ry - 52, 0, 0, Math.PI * 2);
+  ell(45, 52, 0, Math.PI * 2, 6);
   g.fill();
-  // felt texture
+
+  // felt fibre
   const rnd = seeded(11);
   g.save();
-  g.beginPath();
-  g.ellipse(cx, cy + 6, rx - 45, ry - 52, 0, 0, Math.PI * 2);
+  ell(45, 52, 0, Math.PI * 2, 6);
   g.clip();
-  for (let i = 0; i < 9000; i++) {
-    g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,40,50,0.06)';
-    g.fillRect(rnd() * w, cy - ry + rnd() * ry * 2, 2, 2);
+  for (let i = 0; i < 14000; i++) {
+    g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,20,15,0.08)';
+    g.fillRect(rnd() * w, cy - ry + rnd() * ry * 2, 2, 1.5);
   }
+  // the rail's shadow falling on the felt edge
+  g.strokeStyle = 'rgba(0,0,0,0.45)';
+  g.lineWidth = 40;
+  g.filter = 'blur(14px)';
+  ell(45, 52, 0, Math.PI * 2, 6);
+  g.stroke();
+  g.filter = 'none';
   g.restore();
-  // printed betting line
-  g.strokeStyle = 'rgba(255,255,255,0.4)';
-  g.lineWidth = 4;
+
+  // gilded betting line, double
+  g.strokeStyle = rgba(PAL.gold, 0.55);
+  g.lineWidth = 2.5;
   g.beginPath();
   g.ellipse(cx, cy + 20, rx * 0.74, ry * 0.62, 0, Math.PI * 1.08, Math.PI * 1.92);
   g.stroke();
-  g.fillStyle = 'rgba(255,255,255,0.28)';
-  g.font = '700 30px "Dela Gothic One", "Noto Sans SC", sans-serif';
-  g.textAlign = 'center';
-  g.fillText("TEXAS HOLD'EM", cx, cy - ry * 0.22);
-  return c;
-}
-
-// ---------------------------------------------------------------------------
-// Characters (placeholder busts)
-// ---------------------------------------------------------------------------
-
-function hairPath(g: CanvasRenderingContext2D, style: HairStyle) {
+  g.strokeStyle = rgba(PAL.gold, 0.25);
+  g.lineWidth = 1.5;
   g.beginPath();
-  // crown and sides
-  g.moveTo(-100, 10);
-  g.bezierCurveTo(-112, -120, -50, -150, 0, -150);
-  g.bezierCurveTo(50, -150, 112, -120, 100, 10);
-  const sideLen = style === 'long' ? 330 : style === 'short' ? 20 : 75;
-  g.lineTo(100, sideLen);
-  g.quadraticCurveTo(84, sideLen + 18, 66, sideLen);
-  g.lineTo(66, -6);
-  g.lineTo(-66, -6);
-  g.lineTo(-66, sideLen);
-  g.quadraticCurveTo(-84, sideLen + 18, -100, sideLen);
-  g.closePath();
-  if (style === 'bob' || style === 'fox') {
-    const tall = style === 'fox' ? 200 : 180;
-    g.moveTo(-86, -96); g.lineTo(-74, -tall); g.lineTo(-36, -136); g.closePath();
-    g.moveTo(86, -96); g.lineTo(74, -tall); g.lineTo(36, -136); g.closePath();
-  }
-  if (style === 'twin') {
-    g.moveTo(-96, -60); g.bezierCurveTo(-210, -40, -200, 180, -150, 260); g.bezierCurveTo(-170, 120, -150, 0, -96, -20); g.closePath();
-    g.moveTo(96, -60); g.bezierCurveTo(210, -40, 200, 180, 150, 260); g.bezierCurveTo(170, 120, 150, 0, 96, -20); g.closePath();
-  }
-  if (style === 'short') {
-    for (let i = -3; i <= 3; i++) { g.moveTo(i * 26 - 14, -130); g.lineTo(i * 30, -175 - Math.abs(i) * -4); g.lineTo(i * 26 + 14, -130); g.closePath(); }
-  }
-}
-
-function drawFace(g: CanvasRenderingContext2D, pose: Pose) {
-  const skin = g.createRadialGradient(-20, -10, 10, 0, 10, 80);
-  skin.addColorStop(0, '#FFF1E6');
-  skin.addColorStop(1, '#F2B8A0');
-  g.fillStyle = skin;
-  g.beginPath();
-  g.ellipse(0, 12, 70, 76, 0, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = '#3A1E2A';
-  g.fillStyle = '#3A1E2A';
-  g.lineCap = 'round';
-  g.lineWidth = 6;
-  const arcEyes = (up: boolean) => {
-    for (const x of [-28, 28]) {
-      g.beginPath();
-      g.moveTo(x - 16, up ? 12 : 2);
-      g.quadraticCurveTo(x, up ? -8 : 18, x + 16, up ? 12 : 2);
-      g.stroke();
-    }
-  };
-  const openEyes = (r = 9, lookUp = 0) => {
-    for (const x of [-28, 28]) {
-      g.fillStyle = '#FFFFFF';
-      g.beginPath(); g.ellipse(x, 6, 15, 17, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#3A1E2A';
-      g.beginPath(); g.arc(x, 8 - lookUp, r, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#FFFFFF';
-      g.beginPath(); g.arc(x - 3, 3 - lookUp, 3, 0, Math.PI * 2); g.fill();
-    }
-  };
-  const mouth = (kind: 'smile' | 'grin' | 'flat' | 'frown' | 'o' | 'wobble' | 'smirk') => {
-    g.lineWidth = 5;
-    g.beginPath();
-    if (kind === 'smile') { g.moveTo(-16, 40); g.quadraticCurveTo(0, 54, 16, 40); g.stroke(); }
-    if (kind === 'smirk') { g.moveTo(-14, 44); g.quadraticCurveTo(6, 52, 20, 36); g.stroke(); }
-    if (kind === 'flat') { g.moveTo(-12, 46); g.lineTo(12, 44); g.stroke(); }
-    if (kind === 'frown') { g.moveTo(-16, 50); g.quadraticCurveTo(0, 38, 16, 50); g.stroke(); }
-    if (kind === 'wobble') { g.moveTo(-18, 46); g.quadraticCurveTo(-9, 38, 0, 46); g.quadraticCurveTo(9, 54, 18, 46); g.stroke(); }
-    if (kind === 'o') { g.fillStyle = '#5A1020'; g.beginPath(); g.ellipse(0, 48, 11, 15, 0, 0, Math.PI * 2); g.fill(); }
-    if (kind === 'grin') {
-      g.fillStyle = '#5A1020';
-      g.moveTo(-30, 36); g.quadraticCurveTo(0, 90, 30, 36); g.closePath(); g.fill();
-      g.fillStyle = '#E0506A'; g.beginPath(); g.ellipse(0, 62, 16, 9, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#FFFFFF'; g.beginPath(); g.moveTo(14, 37); g.lineTo(22, 37); g.lineTo(18, 48); g.closePath(); g.fill();
-    }
-  };
-  switch (pose) {
-    case 'idle': openEyes(); mouth('smile'); break;
-    case 'smug':
-      g.beginPath(); g.moveTo(-44, 6); g.lineTo(-12, 6); g.moveTo(12, 6); g.lineTo(44, 6); g.stroke();
-      mouth('smirk'); break;
-    case 'nervous':
-      openEyes(7); mouth('wobble');
-      g.fillStyle = '#7EC8FF'; g.beginPath(); g.moveTo(66, -30); g.quadraticCurveTo(80, -6, 66, 6); g.quadraticCurveTo(52, -6, 66, -30); g.fill();
-      break;
-    case 'angry':
-      openEyes(8);
-      g.lineWidth = 7; g.beginPath(); g.moveTo(-48, -18); g.lineTo(-12, -4); g.moveTo(48, -18); g.lineTo(12, -4); g.stroke();
-      mouth('frown');
-      g.strokeStyle = '#E0304A'; g.lineWidth = 6; g.beginPath(); g.moveTo(52, -66); g.lineTo(70, -48); g.moveTo(70, -66); g.lineTo(52, -48); g.stroke();
-      break;
-    case 'shock': openEyes(5); mouth('o'); break;
-    case 'cry':
-      arcEyes(false); mouth('wobble');
-      g.fillStyle = '#7EC8FF';
-      g.beginPath(); g.ellipse(-30, 34, 7, 18, 0, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.ellipse(30, 34, 7, 18, 0, 0, Math.PI * 2); g.fill();
-      break;
-    case 'win': arcEyes(true); mouth('grin'); break;
-  }
-  // blush
-  g.fillStyle = 'rgba(255,120,150,0.7)';
-  for (const x of [-46, 46]) { g.beginPath(); g.ellipse(x, 32, 15, 8, 0, 0, Math.PI * 2); g.fill(); }
-}
-
-/** A half-body placeholder (600×800, bottom = waist) or, for 'win', arms raised. */
-export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
-  const W = 600, H = 800;
-  const [c, g] = canvas(W, H);
-  const hairHi = mix(look.color, 0xffffff, 0.55);
-  const hairLo = mix(look.color, 0x2a1030, 0.15);
-  const suitHi = mix(look.color, 0x1a1030, 0.45);
-  const suitLo = mix(look.color, 0x120818, 0.75);
-  g.translate(W / 2, 300);
-
-  // torso
-  const tg = g.createLinearGradient(-150, 0, 150, 0);
-  tg.addColorStop(0, suitLo); tg.addColorStop(0.45, suitHi); tg.addColorStop(1, suitLo);
-  g.fillStyle = tg;
-  g.beginPath();
-  g.moveTo(-90, 120);
-  g.bezierCurveTo(-150, 260, -170, 420, -175, 520);
-  g.lineTo(175, 520);
-  g.bezierCurveTo(170, 420, 150, 260, 90, 120);
-  g.closePath();
-  g.fill();
-
-  // arms
-  const skin = g.createLinearGradient(0, -300, 0, 200);
-  skin.addColorStop(0, '#FFF3EA'); skin.addColorStop(1, '#F0B49C');
-  g.fillStyle = skin;
-  for (const dir of [-1, 1]) {
-    g.beginPath();
-    if (pose === 'win') {
-      g.moveTo(dir * 70, 120); g.quadraticCurveTo(dir * 170, -20, dir * 230, -170);
-      g.lineTo(dir * 280, -150); g.quadraticCurveTo(dir * 220, 30, dir * 110, 190);
-      g.closePath(); g.fill();
-      g.beginPath(); g.ellipse(dir * 258, -185, 36, 42, dir * 0.5, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#FFFFFF'; g.save(); g.translate(dir * 232, -132); g.rotate(dir * 0.6); g.fillRect(-30, -16, 60, 32); g.restore();
-      g.fillStyle = skin;
-    } else {
-      g.moveTo(dir * 92, 130); g.quadraticCurveTo(dir * 160, 260, dir * 150, 500);
-      g.lineTo(dir * 112, 500); g.quadraticCurveTo(dir * 120, 280, dir * 64, 170);
-      g.closePath(); g.fill();
-    }
-  }
-
-  // neck, collar, bow tie
-  g.fillStyle = '#F6CDB8';
-  g.fillRect(-26, 70, 52, 60);
-  g.fillStyle = '#FFFFFF';
-  g.beginPath(); g.moveTo(-44, 118); g.lineTo(0, 140); g.lineTo(44, 118); g.lineTo(40, 134); g.lineTo(0, 156); g.lineTo(-40, 134); g.closePath(); g.fill();
-  g.fillStyle = '#2A1840';
-  g.beginPath(); g.moveTo(-32, 122); g.lineTo(0, 136); g.lineTo(-32, 152); g.closePath(); g.moveTo(32, 122); g.lineTo(0, 136); g.lineTo(32, 152); g.closePath(); g.fill();
-
-  // hair behind + face + bangs
-  const hg = g.createLinearGradient(0, -200, 0, 120);
-  hg.addColorStop(0, hairHi); hg.addColorStop(1, hairLo);
-  hairPath(g, look.hair);
-  g.fillStyle = hg;
-  g.fill();
-  drawFace(g, pose);
-  g.fillStyle = hg;
-  g.beginPath();
-  g.moveTo(-74, -6);
-  g.bezierCurveTo(-66, -98, 66, -98, 74, -6);
-  g.lineTo(52, -20); g.lineTo(34, -2); g.lineTo(14, -22); g.lineTo(-8, -2); g.lineTo(-30, -20); g.lineTo(-50, -2);
-  g.closePath();
-  g.fill();
-  // hair shine
-  g.strokeStyle = 'rgba(255,255,255,0.5)';
-  g.lineWidth = 9;
-  g.beginPath(); g.arc(-18, -70, 62, Math.PI * 1.1, Math.PI * 1.45); g.stroke();
-  // warm rim light along the silhouette
-  g.save();
-  g.globalCompositeOperation = 'lighter';
-  hairPath(g, look.hair);
-  g.strokeStyle = 'rgba(255,214,170,0.45)';
-  g.lineWidth = 6;
-  g.shadowColor = '#FFD6AA';
-  g.shadowBlur = 26;
+  g.ellipse(cx, cy + 20, rx * 0.74 - 14, ry * 0.62 - 10, 0, Math.PI * 1.09, Math.PI * 1.91);
   g.stroke();
+
+  // the house crest, printed in gold leaf
+  g.save();
+  g.translate(cx, cy - ry * 0.21);
+  g.scale(1, 0.55);
+  g.fillStyle = rgba(PAL.gold, 0.22);
+  g.font = '700 46px "Cinzel", "Noto Serif SC", serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('ROYAL  NIGHT', 0, 0);
+  g.strokeStyle = rgba(PAL.gold, 0.2);
+  g.lineWidth = 2;
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.moveTo(s * 210, 0);
+    g.lineTo(s * 330, 0);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(s * 196, -8);
+    g.lineTo(s * 204, 0);
+    g.lineTo(s * 196, 8);
+    g.lineTo(s * 188, 0);
+    g.closePath();
+    g.fillStyle = rgba(PAL.gold, 0.22);
+    g.fill();
+  }
   g.restore();
   return c;
 }
 
 // ---------------------------------------------------------------------------
-// Small textures
+// Characters: silhouettes with rim light (until the illustrations arrive)
 // ---------------------------------------------------------------------------
 
-export function paintChip(size = 64, face = 0x1e1a22, stripe = 0xf7f2ee): HTMLCanvasElement {
+function hairPath(p: Path2D, style: HairStyle) {
+  // crown and sides
+  p.moveTo(-96, 14);
+  p.bezierCurveTo(-110, -118, -50, -150, 0, -150);
+  p.bezierCurveTo(50, -150, 110, -118, 96, 14);
+  const sideLen = style === 'long' ? 360 : style === 'short' ? 30 : style === 'bob' || style === 'fox' ? 70 : 120;
+  p.bezierCurveTo(104, sideLen * 0.5, 112, sideLen, 86, sideLen + 20);
+  p.lineTo(62, sideLen);
+  p.lineTo(60, 0);
+  p.lineTo(-60, 0);
+  p.lineTo(-62, sideLen);
+  p.lineTo(-86, sideLen + 20);
+  p.bezierCurveTo(-112, sideLen, -104, sideLen * 0.5, -96, 14);
+  p.closePath();
+  if (style === 'bob' || style === 'fox') {
+    const tall = style === 'fox' ? 210 : 190;
+    const tilt = style === 'fox' ? 20 : 0;
+    p.moveTo(-84, -100); p.lineTo(-78 - tilt, -tall); p.lineTo(-34, -138); p.closePath();
+    p.moveTo(84, -100); p.lineTo(78 + tilt, -tall); p.lineTo(34, -138); p.closePath();
+  }
+  if (style === 'twin') {
+    p.moveTo(-90, -70); p.bezierCurveTo(-230, -50, -220, 220, -150, 330); p.bezierCurveTo(-180, 160, -160, 10, -92, -20); p.closePath();
+    p.moveTo(90, -70); p.bezierCurveTo(230, -50, 220, 220, 150, 330); p.bezierCurveTo(180, 160, 160, 10, 92, -20); p.closePath();
+  }
+  if (style === 'short') {
+    for (let i = -3; i <= 3; i++) {
+      p.moveTo(i * 26 - 14, -128);
+      p.lineTo(i * 30, -172 + Math.abs(i) * 4);
+      p.lineTo(i * 26 + 14, -128);
+      p.closePath();
+    }
+  }
+}
+
+/** Head, neck, bare shoulders and arms of a woman in an evening dress (or arms raised). */
+function bodyPath(p: Path2D, pose: Pose) {
+  // head
+  p.ellipse(0, 10, 68, 80, 0, 0, Math.PI * 2);
+  // neck and shoulders down to the table edge
+  p.moveTo(-26, 70);
+  p.lineTo(-24, 118);
+  p.bezierCurveTo(-60, 132, -130, 136, -158, 168);
+  if (pose === 'win') {
+    // arms up
+    p.bezierCurveTo(-190, 120, -220, 0, -250, -150);
+    p.bezierCurveTo(-262, -200, -232, -230, -206, -196);
+    p.bezierCurveTo(-180, -120, -150, 40, -120, 140);
+    p.bezierCurveTo(-140, 300, -150, 420, -150, 520);
+    p.lineTo(150, 520);
+    p.bezierCurveTo(150, 420, 140, 300, 120, 140);
+    p.bezierCurveTo(150, 40, 180, -120, 206, -196);
+    p.bezierCurveTo(232, -230, 262, -200, 250, -150);
+    p.bezierCurveTo(220, 0, 190, 120, 158, 168);
+  } else {
+    p.bezierCurveTo(-182, 196, -188, 300, -182, 520);
+    p.lineTo(182, 520);
+    p.bezierCurveTo(188, 300, 182, 196, 158, 168);
+  }
+  p.bezierCurveTo(130, 136, 60, 132, 24, 118);
+  p.lineTo(26, 70);
+  p.closePath();
+}
+
+/** Eyes glowing in the dark, shaped by the mood. */
+function eyes(g: CanvasRenderingContext2D, pose: Pose, color: number) {
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  g.shadowColor = hex(color);
+  g.shadowBlur = 18;
+  g.fillStyle = mix(color, 0xffffff, 0.55);
+  g.strokeStyle = mix(color, 0xffffff, 0.55);
+  g.lineCap = 'round';
+  g.lineWidth = 5;
+  for (const s of [-1, 1]) {
+    const x = s * 27;
+    g.beginPath();
+    switch (pose) {
+      case 'smug': g.moveTo(x - 15, 10); g.quadraticCurveTo(x, 4, x + 15, 10); g.stroke(); break;
+      case 'angry': g.moveTo(x - 14, s < 0 ? 2 : 13); g.lineTo(x + 14, s < 0 ? 13 : 2); g.stroke(); break;
+      case 'win':
+      case 'cry': g.moveTo(x - 14, 12); g.quadraticCurveTo(x, -2, x + 14, 12); g.stroke(); break;
+      case 'shock': g.arc(x, 8, 5, 0, Math.PI * 2); g.fill(); break;
+      case 'nervous': g.ellipse(x, 8, 9, 5, 0, 0, Math.PI * 2); g.fill(); break;
+      default: g.ellipse(x, 8, 13, 4.5, s * 0.08, 0, Math.PI * 2); g.fill();
+    }
+  }
+  g.restore();
+}
+
+/** A half-body placeholder (600×800, bottom = waist): a silhouette against the light,
+ *  rim-lit in the character's colour, gold at the throat, eyes catching the light. */
+export function paintBust(look: Look, pose: Pose): HTMLCanvasElement {
+  const W = 600, H = 800, OX = W / 2, OY = 290;
+  const shape = new Path2D();
+  hairPath(shape, look.hair);
+  bodyPath(shape, pose);
+
+  // 1. the solid figure (one union of hair, head and body), with a satin dress
+  const [fig, f] = canvas(W, H);
+  f.translate(OX, OY);
+  const fill = f.createLinearGradient(0, -220, 0, 520);
+  fill.addColorStop(0, mix(look.color, 0x08050a, 0.78));
+  fill.addColorStop(0.45, mix(look.color, 0x08050a, 0.88));
+  fill.addColorStop(1, '#060407');
+  f.fillStyle = fill;
+  f.fill(shape, 'nonzero');
+  f.save();
+  f.globalCompositeOperation = 'source-atop';
+  const dress = new Path2D();
+  dress.moveTo(-200, 232);
+  dress.bezierCurveTo(-90, 196, -60, 300, 0, 252);
+  dress.bezierCurveTo(60, 300, 90, 196, 200, 232);
+  dress.lineTo(200, 560);
+  dress.lineTo(-200, 560);
+  dress.closePath();
+  const silk = f.createLinearGradient(-200, 0, 200, 0);
+  silk.addColorStop(0, mix(look.color, 0x000000, 0.88));
+  silk.addColorStop(0.4, mix(look.color, 0x000000, 0.58));
+  silk.addColorStop(0.52, mix(look.color, 0x000000, 0.72));
+  silk.addColorStop(1, mix(look.color, 0x000000, 0.92));
+  f.fillStyle = silk;
+  f.fill(dress);
+  // soft light on the hair crown and the shoulders, from the lamps above
+  const top = f.createRadialGradient(-30, -150, 10, -10, -80, 220);
+  top.addColorStop(0, rgba(look.color, 0.35));
+  top.addColorStop(1, rgba(look.color, 0));
+  f.fillStyle = top;
+  f.fillRect(-300, -300, 600, 400);
+  f.restore();
+
+  // 2. the same shape as a flat colour, for the glow and the rim
+  const [lit, l] = canvas(W, H);
+  l.drawImage(fig, 0, 0);
+  l.globalCompositeOperation = 'source-in';
+  l.fillStyle = mix(look.color, 0xffffff, 0.45);
+  l.fillRect(0, 0, W, H);
+
+  const [c, g] = canvas(W, H);
+  // halo behind her, in her colour
+  g.save();
+  g.shadowColor = hex(look.color);
+  g.shadowBlur = 46;
+  g.globalAlpha = 0.85;
+  g.drawImage(lit, 0, 0);
+  g.restore();
+  // a thin rim of light along the top and the sides (back light from above)
+  g.drawImage(lit, -3, -4);
+  g.drawImage(lit, 3, -4);
+  g.globalAlpha = 0.6;
+  g.drawImage(lit, 0, -6);
+  g.globalAlpha = 1;
+  // the figure itself on top: only the rim stays visible around it
+  g.drawImage(fig, 0, 0);
+  // fade the bottom into the dark (she sits behind the table)
+  g.globalCompositeOperation = 'destination-out';
+  const fade = g.createLinearGradient(0, H - 160, 0, H);
+  fade.addColorStop(0, 'rgba(0,0,0,0)');
+  fade.addColorStop(1, 'rgba(0,0,0,0.6)');
+  g.fillStyle = fade;
+  g.fillRect(0, H - 160, W, 160);
+  g.globalCompositeOperation = 'source-over';
+
+  // gold necklace and earrings
+  g.translate(OX, OY);
+  g.save();
+  g.shadowColor = '#FFE3A3';
+  g.shadowBlur = 10;
+  g.fillStyle = hex(PAL.goldHi);
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    g.beginPath();
+    g.arc(-46 + t * 92, 128 + Math.sin(t * Math.PI) * 26, i === 6 ? 7 : 3, 0, Math.PI * 2);
+    g.fill();
+  }
+  if (pose !== 'win') {
+    for (const sx of [-1, 1]) {
+      g.beginPath();
+      g.ellipse(sx * 66, 54, 4, 9, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  g.restore();
+  eyes(g, pose, look.color);
+  return c;
+}
+
+// ---------------------------------------------------------------------------
+// Chips and small textures
+// ---------------------------------------------------------------------------
+
+/** Chip colours: face, edge spots. */
+export const CHIP_COLORS: [number, number][] = [
+  [0x16121a, PAL.gold],     // black and gold
+  [PAL.crimson, PAL.ivory], // crimson
+  [PAL.ivory, PAL.crimson], // ivory
+  [0x4a2a7a, PAL.gold],     // violet
+];
+
+/** A chip seen from above (flying chips, particles). */
+export function paintChip(size = 64, face = 0x16121a, stripe = PAL.gold): HTMLCanvasElement {
   const [c, g] = canvas(size, size);
   const r = size / 2;
   g.translate(r, r);
-  g.fillStyle = hex(face);
+  const body = g.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r);
+  body.addColorStop(0, mix(face, 0xffffff, 0.25));
+  body.addColorStop(1, hex(face));
+  g.fillStyle = body;
   g.beginPath(); g.arc(0, 0, r - 1, 0, Math.PI * 2); g.fill();
   g.strokeStyle = hex(stripe);
-  g.lineWidth = r * 0.22;
-  g.setLineDash([r * 0.42, r * 0.36]);
-  g.beginPath(); g.arc(0, 0, r * 0.74, 0, Math.PI * 2); g.stroke();
+  g.lineWidth = r * 0.2;
+  g.setLineDash([r * 0.34, r * 0.4]);
+  g.beginPath(); g.arc(0, 0, r * 0.82, 0, Math.PI * 2); g.stroke();
   g.setLineDash([]);
-  g.strokeStyle = 'rgba(255,255,255,0.35)';
-  g.lineWidth = 2;
-  g.beginPath(); g.arc(0, 0, r * 0.45, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = rgba(stripe, 0.8);
+  g.lineWidth = 1.5;
+  g.beginPath(); g.arc(0, 0, r * 0.55, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = rgba(stripe, 0.25);
+  g.beginPath(); g.arc(0, 0, r * 0.5, 0, Math.PI * 2); g.fill();
   return c;
 }
 
@@ -390,13 +568,13 @@ export function paintGlow(size = 128, color = '#FFF4EA'): HTMLCanvasElement {
   return c;
 }
 
-/** Darkened edges; `strength` 0..1. */
-export function paintVignette(w: number, h: number, color = '48,11,11'): HTMLCanvasElement {
+/** Darkened edges. */
+export function paintVignette(w: number, h: number, color = '8,3,8'): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
-  const v = g.createRadialGradient(w / 2, h * 0.45, h * 0.3, w / 2, h / 2, w * 0.62);
+  const v = g.createRadialGradient(w / 2, h * 0.5, h * 0.32, w / 2, h / 2, w * 0.6);
   v.addColorStop(0, `rgba(${color},0)`);
-  v.addColorStop(0.6, `rgba(${color},0.12)`);
-  v.addColorStop(1, `rgba(${color},0.85)`);
+  v.addColorStop(0.55, `rgba(${color},0.18)`);
+  v.addColorStop(1, `rgba(${color},0.9)`);
   g.fillStyle = v;
   g.fillRect(0, 0, w, h);
   return c;
@@ -406,15 +584,15 @@ export function paintVignette(w: number, h: number, color = '48,11,11'): HTMLCan
 export function paintForeground(w: number, h: number): HTMLCanvasElement {
   const [c, g] = canvas(w, h);
   const rnd = seeded(5);
-  g.fillStyle = '#2A0A0C';
+  g.fillStyle = '#060305';
   g.beginPath(); g.ellipse(w * 0.13, h * 1.03, w * 0.18, h * 0.21, 0, 0, Math.PI * 2); g.fill();
   for (let i = 0; i < 26; i++) { g.beginPath(); g.arc(w * 0.08 + rnd() * w * 0.11, h * 0.74 + rnd() * h * 0.12, 34 + rnd() * 20, 0, Math.PI * 2); g.fill(); }
   g.beginPath(); g.ellipse(w * 0.88, h * 1.04, w * 0.19, h * 0.22, 0, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.ellipse(w * 0.885, h * 0.77, 130, 150, 0, 0, Math.PI * 2); g.fill();
   g.globalCompositeOperation = 'lighter';
-  g.strokeStyle = 'rgba(246,147,117,0.5)';
-  g.lineWidth = 6;
-  g.shadowColor = '#F69375';
+  g.strokeStyle = rgba(PAL.gold, 0.45);
+  g.lineWidth = 5;
+  g.shadowColor = hex(PAL.gold);
   g.shadowBlur = 25;
   g.beginPath(); g.arc(w * 0.885, h * 0.77, 140, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
   g.beginPath(); g.arc(w * 0.135, h * 0.8, 120, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
