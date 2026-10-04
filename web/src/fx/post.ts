@@ -1,6 +1,6 @@
 // Post-processing: grain, vignette (with "tighten" for suspense), bloom on the
 // effects layer, white flash, shockwave and RGB split for impact frames.
-import { ColorMatrixFilter, type Container, Graphics, NoiseFilter, Sprite, Texture, Ticker } from 'pixi.js';
+import { ColorMatrixFilter, type Container, type Filter, Graphics, NoiseFilter, Sprite, Texture, Ticker } from 'pixi.js';
 import { AdvancedBloomFilter, RGBSplitFilter, ShockwaveFilter } from 'pixi-filters';
 import { animate, ease, tween } from '../tween';
 import { paintVignette } from '../stage/painter';
@@ -14,6 +14,8 @@ export class Post {
   private flashG = new Graphics().rect(0, 0, 1920, 1080).fill(0xffffff);
   private red: Sprite;
   private pressureMode: 'off' | 'low' | 'bank' = 'off';
+  /** Filters of the impacts still playing; they can overlap. */
+  private impacts = new Set<Filter>();
   quality: Quality = 'high';
 
   constructor(
@@ -43,8 +45,14 @@ export class Post {
 
   setQuality(q: Quality) {
     this.quality = q;
-    this.world.filters = q === 'low' ? [] : q === 'medium' ? [this.grade] : [this.grade, this.grain];
+    this.applyWorldFilters();
     this.fxLayer.filters = q === 'high' ? [new AdvancedBloomFilter({ threshold: 0.45, bloomScale: 1.1, brightness: 1, blur: 6, quality: 4 })] : [];
+  }
+
+  /** Quality filters plus any running impacts, rebuilt whenever either changes. */
+  private applyWorldFilters() {
+    const base: Filter[] = this.quality === 'low' ? [] : this.quality === 'medium' ? [this.grade] : [this.grade, this.grain];
+    this.world.filters = [...base, ...this.impacts];
   }
 
   /** M15: the clock is running out ('low') or eating the time bank ('bank'). */
@@ -67,15 +75,23 @@ export class Post {
     if (this.quality === 'low') return this.flash(0.5, 200);
     const wave = new ShockwaveFilter({ center: { x, y }, amplitude: 24, wavelength: 160, speed: 900, brightness: 1.15, radius: 900 });
     const split = new RGBSplitFilter({ red: { x: -6, y: 0 }, green: { x: 0, y: 4 }, blue: { x: 6, y: 0 } });
-    const base = this.world.filters ? [...(this.world.filters as never[])] : [];
-    this.world.filters = [...base, wave, split];
-    await animate(ms, (p) => {
-      wave.time = p * (ms / 1000);
-      const k = 1 - p;
-      split.red = { x: -6 * k, y: 0 };
-      split.blue = { x: 6 * k, y: 0 };
-    }, ease.linear);
-    this.world.filters = base;
+    this.impacts.add(wave).add(split);
+    this.applyWorldFilters();
+    try {
+      await animate(ms, (p) => {
+        wave.time = p * (ms / 1000);
+        const k = 1 - p;
+        split.red = { x: -6 * k, y: 0 };
+        split.blue = { x: 6 * k, y: 0 };
+      }, ease.linear);
+    } finally {
+      // Remove only this impact's filters: another one may have started meanwhile.
+      this.impacts.delete(wave);
+      this.impacts.delete(split);
+      this.applyWorldFilters();
+      wave.destroy();
+      split.destroy();
+    }
   }
 }
 
