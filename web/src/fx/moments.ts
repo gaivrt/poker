@@ -5,6 +5,7 @@
 // instantly), and the second time a kind of moment plays its holds are shorter.
 // Moments are only triggered by public events, so they never give anything away.
 import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { music } from '../audio/music';
 import { sfx } from '../audio/sfx';
 import type { TableStage } from '../stage/TableStage';
 import { CardSprite } from '../table/CardSprite';
@@ -38,6 +39,12 @@ const CARD_H = 210;
 export class Moments {
   private skipped = false;
   private instant = false;
+  private spent = 0; // ms of big moments already played this hand
+
+  /** A new hand: the presentation budget starts over. */
+  newHand() {
+    this.spent = 0;
+  }
 
   constructor(private d: MomentDeps) {}
 
@@ -68,9 +75,15 @@ export class Moments {
     };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
+    music.duck(true);
+    // Busy hands get shorter holds once ~6 s of moments have played.
+    const k = (n === 0 ? 1 : 0.6) * (this.spent > 6000 ? 0.5 : 1);
+    const t0 = performance.now();
     try {
-      await body(n === 0 ? 1 : 0.6);
+      await body(k);
     } finally {
+      this.spent += performance.now() - t0;
+      music.duck(false);
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('keydown', onKey);
       if (this.skipped && !this.instant) timing.scale = before;
@@ -229,6 +242,15 @@ export class Moments {
         root.destroy({ children: true });
       }
     });
+  }
+
+  /** A second all-in in the same hand: a stamp on her plate instead of the full band. */
+  allInSmall(seat: number) {
+    const s = this.d.stage.seats[seat];
+    const at = this.toScreen({ x: s.spot.plate.x, y: s.spot.plate.y - 70 });
+    sfx.play('thud', 0.8);
+    this.d.camera.shake(6, 200);
+    return stamp(this.d.screen, 'ALL IN', at.x, at.y, { font: FONT_NUM, size: 64, color: 0xffffff, stroke: s.char.color, hold: 280 });
   }
 
   // ---------------- M6 VS ----------------

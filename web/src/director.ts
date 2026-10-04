@@ -5,6 +5,7 @@
 // time; bots think on a visible clock and may leak tells while they do; every hand
 // that gets turned face up is written into the "reading notes" next to what that
 // player said and did, so you can learn their habits.
+import { music } from './audio/music';
 import { sfx } from './audio/sfx';
 import { type Character, EXPRESSION_LABEL, STICKER_LABEL, gestureCaption, pick, talkLine } from './characters';
 import { Expression, type Game, type GameEvent, Gesture, type SignalKindName, Sticker, type StrengthName, type TableState } from './engine';
@@ -63,6 +64,7 @@ export class Director {
   private foldedAfter = new Set<number>();      // who folded since that bet
   private foldedAll = new Set<number>();
   private strengthOf: Record<number, StrengthName> = {};
+  private allIns = 0; // all-ins so far this hand (only the first gets the full cut-in)
 
   constructor(
     private game: Game,
@@ -371,6 +373,9 @@ export class Director {
         void this.bars?.dispose();
         this.bars = null;
         this.tableChips = e.stacks.reduce((a, b) => a + b, 0);
+        music.setTension(0);
+        this.allIns = 0;
+        this.moments.newHand();
         this.lineCooldown = this.lineCooldown.map((c) => Math.max(0, c - 1));
         this.ui.resetPreActions();
         T.newHand(e.stacks, e.button, e.bb);
@@ -425,8 +430,11 @@ export class Director {
           const verb = e.action === 'call' ? '跟注' : e.action === 'bet' ? '下注' : '加注';
           s.setTag(`${verb}${size}${secs}`, 0xffe08a);
           // M5: the all-in cut-in plays before the chips avalanche in.
-          if (e.allIn && this.pres === 'full') await this.moments.allIn(e.seat, pick(c.lines.allIn) ?? 'ALL IN！');
-          else if (e.allIn && this.pres === 'simple') await this.moments.quick('ALL IN');
+          if (e.allIn && this.pres !== 'off') {
+            if (this.allIns++ > 0) await this.moments.allInSmall(e.seat);
+            else if (this.pres === 'full') await this.moments.allIn(e.seat, pick(c.lines.allIn) ?? 'ALL IN！');
+            else await this.moments.quick('ALL IN');
+          }
           // Heavy bets (the pot or more, or all-in) slam down.
           await T.bet(e.seat, e.amount, e.total, e.allIn || (e.potPct ?? 0) >= 100);
           // How big and how fast the chips went in is part of what others can read.
@@ -436,6 +444,7 @@ export class Director {
         }
         T.refreshPot();
         if (e.allIn) {
+          music.setTension(0.7);
           s.markAllIn();
           if (this.pres !== 'off') s.setBurning(true);
         }
@@ -489,6 +498,7 @@ export class Director {
           const eq = shows[shows.length - 1].equity ?? [];
           for (const q of eq) this.equity[q.seat] = q.pct;
           shows.forEach((x) => this.faceoff.add(x.seat));
+          music.setTension(1);
           this.bars = await this.moments.versus(shows.map((x) => ({ seat: x.seat, cards: x.cards })), eq, this.pres === 'full');
           for (const x of shows) {
             this.best[x.seat] = x.best;
@@ -583,6 +593,7 @@ export class Director {
           T.focusSeat(null);
           void this.bars?.dispose();
           this.bars = null;
+          music.setTension(0);
         }
         const best = this.best[e.seat];
         T.seats.forEach((s) => s.highlightCards(s.seat === e.seat ? best : undefined));

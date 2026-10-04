@@ -1,6 +1,7 @@
 import 'pixi.js/unsafe-eval'; // Pixi without eval(): runs under strict content security policies
 import { Application, Container, Sprite, type Texture } from 'pixi.js';
 import './style.css';
+import { music } from './audio/music';
 import { sfx } from './audio/sfx';
 import { CAST, type Character, HERO, characterFor } from './characters';
 import { Director } from './director';
@@ -8,7 +9,7 @@ import { type Difficulty, type Format, Game, Sticker, loadEngine } from './engin
 import { Camera } from './fx/camera';
 import { Moments } from './fx/moments';
 import { Particles } from './fx/particles';
-import { Post } from './fx/post';
+import { type Quality, Post } from './fx/post';
 import { makeSticker } from './fx/stickers';
 import { loadProfile, saveProfile } from './profile';
 import { Lobby } from './screens/Lobby';
@@ -88,11 +89,59 @@ const speedOverride = new URLSearchParams(location.search).get('speed');
 // ?debug exposes the clock so a test can fast-forward to the hand it wants to film.
 const debug: Record<string, unknown> | null = new URLSearchParams(location.search).has('debug') ? { timing } : null;
 if (debug) (window as unknown as { __poker: unknown }).__poker = debug;
-if (debug) Object.assign(debug, { overlay, post });
+if (debug) Object.assign(debug, { overlay, post, music });
+// One particle system for the whole session.
+const particles = new Particles(worldFx);
+
+// Quality: "auto" starts high (medium on phones) and steps down while the frame rate
+// stays low; it never steps back up within a session.
+const PARTICLE_CAP: Record<Quality, number> = { high: 420, medium: 220, low: 110 };
+const RESOLUTION: Record<Quality, number> = { high: 2, medium: 1.5, low: 1 };
+const TIERS: Quality[] = ['high', 'medium', 'low'];
+const phone = navigator.maxTouchPoints > 0 && Math.min(window.screen.width, window.screen.height) < 820;
+let autoTier: Quality = phone ? 'medium' : 'high';
+let appliedQuality: Quality | null = null;
+function applyQuality() {
+  const q = overlay.settings.quality === 'auto' ? autoTier : overlay.settings.quality;
+  if (q === appliedQuality) return;
+  appliedQuality = q;
+  post.setQuality(q);
+  particles.max = PARTICLE_CAP[q];
+  const res = Math.min(window.devicePixelRatio || 1, RESOLUTION[q]);
+  if (app.renderer.resolution !== res) app.renderer.resize(window.innerWidth, window.innerHeight, res);
+}
+const fpsWatch = { frames: 0, since: performance.now(), bad: 0, skip: true };
+/** A table just loaded: its first seconds are always choppy, so don't judge them. */
+function resetFpsWatch() {
+  Object.assign(fpsWatch, { frames: 0, since: performance.now(), bad: 0, skip: true });
+}
+app.ticker.add(() => {
+  const w = fpsWatch;
+  w.frames++;
+  const now = performance.now();
+  if (now - w.since < 4000) return;
+  const fps = (w.frames * 1000) / (now - w.since);
+  w.frames = 0;
+  w.since = now;
+  // Only judge while a table is on screen and the tab is visible; two slow windows in a row step down.
+  if (w.skip || overlay.settings.quality !== 'auto' || document.hidden || !stage) {
+    w.skip = false;
+    return;
+  }
+  w.bad = fps < 42 ? w.bad + 1 : 0;
+  const i = TIERS.indexOf(autoTier);
+  if (w.bad >= 2 && i < TIERS.length - 1) {
+    autoTier = TIERS[i + 1];
+    w.bad = 0;
+    applyQuality();
+  }
+});
+
 function applySettings() {
   timing.scale = speedOverride !== null ? Number(speedOverride) : overlay.settings.fast ? 0.5 : 1;
   sfx.muted = !overlay.settings.sound;
-  post.setQuality(overlay.settings.quality);
+  music.setEnabled(overlay.settings.music);
+  applyQuality();
 }
 overlay.onSettings = applySettings;
 overlay.onClock = (mode) => post.pressure(mode);
@@ -102,7 +151,6 @@ window.addEventListener('pointerdown', () => sfx.unlock(), { once: false });
 let game: Game | null = null;
 let stage: TableStage | null = null;
 let lobby: Lobby | null = null;
-let particles: Particles | null = null;
 let director: Director | null = null;
 app.ticker.add(() => stage?.tick(performance.now()));
 
@@ -120,6 +168,7 @@ function teardown() {
     oldGame?.dispose();
   }, 4000);
   for (const c of [...screen.children]) if (!persistentScreen.has(c)) c.removeFromParent();
+  particles.clear();
   worldFx.removeChildren();
   camera.look = { x: 960, y: 540 };
   camera.zoom = 1;
@@ -131,7 +180,7 @@ async function showHome() {
   overlay.setInGame(false);
   const mascot = CAST[4];
   const [bg, poses] = await Promise.all([loadBackground('lobby', { x: 1300, y: 380 }), loadPoses(characterId(4), mascot)]);
-  particles = new Particles(worldFx);
+  music.play('lobby');
   lobby = new Lobby(bg, poses.win, mascot, particles, worldFx);
   world.addChild(lobby);
   const profile = loadProfile();
@@ -157,9 +206,10 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
     loadBackground('table', { x: 960, y: 330 }),
     ...game.roster.map((r, i) => loadPoses(characterId(r), cast[i])),
   ]);
-  particles = new Particles(worldFx);
+  music.play('table');
   stage = new TableStage(cast, poses as Record<Pose, Texture>[], bg, { camera, post, particles, screen });
   world.addChild(stage);
+  resetFpsWatch();
   world.addChild(worldFx);
   overlay.loading(false);
   overlay.setInGame(true);
@@ -199,6 +249,8 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
       profile.games += 1;
       saveProfile(profile);
     }
+    const me = standings.find((s) => s.seat === 0)!;
+    void music.sting(me.place <= 3 ? 'win' : 'lose');
     overlay.showResults(standings, cast, () => void start(format, difficulty, ranked), () => void showHome(), rank);
   });
   overlay.onQuit = () => void showHome();

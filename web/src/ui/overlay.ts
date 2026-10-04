@@ -13,7 +13,8 @@ export interface Settings {
   presentation: Presentation;
   fast: boolean;
   sound: boolean;
-  quality: Quality;
+  music: boolean;
+  quality: Quality | 'auto';
 }
 export interface HomeHandlers {
   start: (format: Format, difficulty: Difficulty, ranked: boolean) => void;
@@ -64,12 +65,13 @@ export function loadSettings(): Settings {
         presentation: s.presentation,
         fast: !!s.fast,
         sound: s.sound !== false,
-        quality: s.quality === 'medium' || s.quality === 'low' ? s.quality : 'high',
+        music: s.music !== false,
+        quality: s.quality === 'high' || s.quality === 'medium' || s.quality === 'low' ? s.quality : 'auto',
       };
   } catch {
     /* storage unavailable or empty */
   }
-  return { presentation: 'full', fast: false, sound: true, quality: 'high' };
+  return { presentation: 'full', fast: false, sound: true, music: true, quality: 'auto' };
 }
 function saveSettings(s: Settings) {
   try {
@@ -525,14 +527,18 @@ export class Overlay {
           <div class="seg" data-name="pres">
             <button data-v="full">完整</button><button data-v="simple">简略</button><button data-v="off">关闭</button>
           </div>
-          <div class="hint">简略：只保留基础动画和全下摊牌；关闭：只保留基础动画。</div></div>
+          <div class="hint">完整：全部演出。简略：大场面缩成约 1 秒的大字，没有镜头运动。关闭：只保留发牌、下注、翻牌这些基础动画。</div></div>
         <div class="group"><div class="label">速度</div>
           <div class="seg" data-name="speed"><button data-v="0">正常</button><button data-v="1">快速</button></div></div>
-        <div class="group"><div class="label">音效</div>
-          <div class="seg" data-name="sound"><button data-v="1">开</button><button data-v="0">关</button></div></div>
+        <div class="row2">
+          <div class="group"><div class="label">音乐</div>
+            <div class="seg" data-name="music"><button data-v="1">开</button><button data-v="0">关</button></div></div>
+          <div class="group"><div class="label">音效</div>
+            <div class="seg" data-name="sound"><button data-v="1">开</button><button data-v="0">关</button></div></div>
+        </div>
         <div class="group"><div class="label">画质</div>
-          <div class="seg" data-name="quality"><button data-v="high">高</button><button data-v="medium">中</button><button data-v="low">低</button></div>
-          <div class="hint">低：关闭泛光和胶片颗粒，适合旧手机。</div></div>
+          <div class="seg" data-name="quality"><button data-v="auto">自动</button><button data-v="high">高</button><button data-v="medium">中</button><button data-v="low">低</button></div>
+          <div class="hint">自动：按设备的实际帧率选择。低：关闭泛光和胶片颗粒，粒子减少，适合旧手机。</div></div>
         <button class="primary close">完成</button>
       </div>`;
     const mark = (name: string, v: string) =>
@@ -541,6 +547,7 @@ export class Overlay {
     mark('pres', s.presentation);
     mark('speed', s.fast ? '1' : '0');
     mark('sound', s.sound ? '1' : '0');
+    mark('music', s.music ? '1' : '0');
     mark('quality', s.quality);
     this.modal.querySelectorAll('.seg button').forEach((b) =>
       b.addEventListener('click', () => {
@@ -549,7 +556,8 @@ export class Overlay {
         if (seg === 'pres') s.presentation = v as Presentation;
         else if (seg === 'speed') s.fast = v === '1';
         else if (seg === 'sound') s.sound = v === '1';
-        else s.quality = v as Quality;
+        else if (seg === 'music') s.music = v === '1';
+        else s.quality = v as Quality | 'auto';
         mark(seg, v);
         saveSettings(s);
         this.onSettings();
@@ -810,13 +818,15 @@ export class Overlay {
     }]);
     const timers = steps.map(([ms, fn]) => window.setTimeout(fn, ms));
     const skip = (e: Event) => {
-      if ((e.target as HTMLElement).closest('button')) return;
+      if ((e.target as HTMLElement | null)?.closest?.('button')) return;
       timers.forEach((id) => window.clearTimeout(id));
       this.modal.classList.add('instant');
       for (const [, fn] of steps) fn();
       this.modal.removeEventListener('pointerdown', skip);
     };
     this.modal.addEventListener('pointerdown', skip);
+    // presentation off: straight to the final state
+    if (this.settings.presentation === 'off') skip(new Event('pointerdown'));
     q<HTMLButtonElement>('.again').onclick = () => {
       this.closeModal();
       onAgain();

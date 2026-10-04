@@ -13,5 +13,11 @@ backgrounds/
   table.png      牌桌场景背景（不含桌子），1920×1080 或 3840×2160
   lobby.png      主页背景
 audio/
-  deal.mp3 flip.mp3 chip.mp3 slide.mp3 thud.mp3 whoosh.mp3 heartbeat.mp3 impact.mp3 chime.mp3 riser.mp3 tick.mp3 cheer.mp3
+  音效：deal flip chip slide thud whoosh whoosh2 heartbeat impact chime riser tick cheer
+        thunder bell glass ooh crack                    （.mp3、.ogg 或 .wav）
+  音乐：bgm-lobby  主页循环        bgm-table   牌桌循环
+        bgm-tension 全下时叠加的紧张层（和 bgm-table 同速度、同长度，循环）
+        sting-win   结算前三名的短乐句   sting-lose  结算后三名的短乐句
 ```
+
+没有音乐文件时，游戏会用程序合成一段慵懒的爵士循环（走路贝斯、电钢琴和弦、刷子鼓）作为占位。

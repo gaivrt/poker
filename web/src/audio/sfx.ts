@@ -11,6 +11,10 @@ class Sfx {
   volume = 0.6;
   muted = false;
 
+  private unlockListeners: ((ctx: AudioContext) => void)[] = [];
+  /** Everything (effects and music) goes through one limiter so big moments never clip. */
+  master: AudioNode | null = null;
+
   /** Must be called from a user gesture (browsers block audio before that). */
   unlock() {
     if (!this.ctx) {
@@ -19,8 +23,24 @@ class Sfx {
       } catch {
         return;
       }
+      const ctx = this.ctx;
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -6;
+      limiter.knee.value = 6;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.15;
+      limiter.connect(ctx.destination);
+      this.master = limiter;
+      this.unlockListeners.forEach((f) => f(ctx));
     }
     void this.ctx.resume();
+  }
+
+  /** Called once with the audio context when sound first becomes possible (music hooks in here). */
+  onUnlock(f: (ctx: AudioContext) => void) {
+    if (this.ctx) f(this.ctx);
+    else this.unlockListeners.push(f);
   }
 
   private async file(name: SfxName): Promise<AudioBuffer | null> {
@@ -45,7 +65,7 @@ class Sfx {
       const ctx = this.ctx!;
       const out = ctx.createGain();
       out.gain.value = this.volume * gain;
-      out.connect(ctx.destination);
+      out.connect(this.master ?? ctx.destination);
       if (buf) {
         const s = ctx.createBufferSource();
         s.buffer = buf;

@@ -15,6 +15,8 @@ export class Particles {
   readonly glowTex = Texture.from(paintGlow(128));
   readonly goldTex = Texture.from(paintGlow(64, '#FFD36B'));
   private paperTex: Texture | null = null;
+  /** Most particles alive at once (lowered on weaker devices). */
+  max = 420;
 
   constructor(private layer: Container) {
     Ticker.shared.add((t) => this.update(t.deltaMS / 1000));
@@ -34,7 +36,7 @@ export class Particles {
   }
 
   private spawn(tex: Texture, x: number, y: number, o: Partial<P> & { scale?: number; tint?: number; add?: boolean }) {
-    if (this.live.length > 420) return;
+    if (this.live.length >= this.max) return;
     const s = this.take(tex);
     if (o.tint !== undefined) s.tint = o.tint;
     if (o.add) s.blendMode = 'add';
@@ -62,6 +64,16 @@ export class Particles {
         this.live.splice(i, 1);
       }
     }
+  }
+
+  /** Drop everything in flight (leaving a screen). */
+  clear() {
+    for (const p of this.live) {
+      p.s.visible = false;
+      p.s.removeFromParent();
+      this.pool.push(p.s);
+    }
+    this.live = [];
   }
 
   /** Chips bursting up from a point and raining down. */
