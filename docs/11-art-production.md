@@ -31,7 +31,7 @@
 
 ### 怎么交给我
 
-- **只想让我先看效果**：直接在对话里贴图。
+- **只想让我先看效果**：直接在对话里贴图。对话里的图会被压缩（凛 v1 只剩 896×1200），只够看效果，定稿要传原图。
 - **要放进游戏**：在 GitHub 网页上打开分支 `claude/sleepy-ptolemy-phko5h`，进入 `art-src/<角色ID>/`（背景放 `art-src/backgrounds/`），点 Add file → Upload files 上传原图。我来抠图、对齐、缩放、生成表情脸片，再放进 `web/public/art/`。
 - 文件名：`rin-base.png`、`rin-smug.png`、`table-far.png` 这样，同一张改了几版就加 `-v2`、`-v3`。
 

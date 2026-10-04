@@ -1,6 +1,8 @@
 # 美术与音频素材（热插拔）
 
 把文件按下面的路径放进来，游戏会自动使用；缺少的文件由程序绘制的占位形象代替。
+图片可以是 `.webp`（优先）或 `.png`。角色只要有 idle，缺少的其他姿态先用 idle 代替，不会混进占位剪影。
+原图抠图：`cd web && node tools/cutout.mjs <原图> public/art/characters/<角色ID>/idle.webp --bottom 0.75`（纯色底，`--bottom` 裁掉下面 25%）。
 开发服务器运行时放入新文件会自动刷新。完整规范见 `docs/08-presentation.md` 第 6 节。
 
 ```
