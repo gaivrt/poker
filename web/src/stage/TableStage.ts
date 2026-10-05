@@ -10,7 +10,8 @@ import type { Post } from '../fx/post';
 import { CardSprite } from '../table/CardSprite';
 import { BOARD_CARD, BOARD_X, BOARD_Y, FONT_DISPLAY, FONT_NUM, POT_POS, type Point, SHOE, SPOTS, fmt } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
-import { PAL, paintBeam, paintForeground, paintTable, paintTableMarks, paintTableMask, type Pose } from './painter';
+import type { PoseSet } from './assets';
+import { PAL, paintBeam, paintForeground, paintTable, paintTableMarks, paintTableMask } from './painter';
 import { Seat, chipStack } from './Seat';
 
 export interface StageDeps {
@@ -44,7 +45,7 @@ export class TableStage extends Container {
 
   constructor(
     cast: Character[],
-    poses: Record<Pose, Texture>[],
+    poses: PoseSet[],
     bg: Texture,
     tableArt: Texture | null,
     private deps: StageDeps,

@@ -42,12 +42,46 @@ export function characterId(rosterIndex: number): string {
 
 export const POSES: Pose[] = ['idle', 'smug', 'nervous', 'angry', 'shock', 'cry', 'win'];
 
+/** characters/<id>/meta.json: where things are in that character's art. */
+export interface ArtMeta {
+  /** Centre of the face in the idle art, as fractions of its width and height. */
+  head: [number, number];
+  /** Which way her body turns in the art; she is mirrored so she turns toward the table's middle. */
+  facing: 'left' | 'right' | 'front';
+  /** Centre of the eyes in cutin art, as fractions (default the middle). */
+  cutinEyes?: [number, number];
+}
+
+/** Real (not painted) art for a character, beyond the poses. */
+export interface RealArt {
+  meta: ArtMeta;
+  /** Close-up for the ALL IN band and other cut-ins. */
+  cutin?: Texture;
+  /** The idle art with closed eyes, same framing. */
+  blink?: Texture;
+}
+
+/** Every pose's texture, plus `art` when the character has real art. */
+export type PoseSet = Record<Pose, Texture> & { art?: RealArt };
+
+const DEFAULT_META: ArtMeta = { head: [0.5, 0.3], facing: 'front' };
+
+async function loadMeta(id: string): Promise<ArtMeta> {
+  const path = `characters/${id}/meta.json`;
+  if (!available.has(path)) return DEFAULT_META;
+  try {
+    return { ...DEFAULT_META, ...((await (await fetch(url(path))).json()) as Partial<ArtMeta>) };
+  } catch {
+    return DEFAULT_META;
+  }
+}
+
 const cache = new Map<string, Texture>();
 
 /** Textures for every pose of one character, real art first. A pose without its own
  *  file uses the real idle art if there is one, so a character never mixes real art
  *  with placeholder silhouettes; with no art at all, every pose is painted. */
-export async function loadPoses(id: string, char: Character): Promise<Record<Pose, Texture>> {
+export async function loadPoses(id: string, char: Character): Promise<PoseSet> {
   const idx = CHARACTER_IDS.indexOf(id);
   const hair: HairStyle = idx >= 0 ? HAIR[idx] : 'bob';
   const load = async (pose: Pose) => {
@@ -59,7 +93,7 @@ export async function loadPoses(id: string, char: Character): Promise<Record<Pos
     return cache.get(key);
   };
   const idle = await load('idle');
-  const out = {} as Record<Pose, Texture>;
+  const out = {} as PoseSet;
   await Promise.all(
     POSES.map(async (pose) => {
       let tex = await load(pose);
@@ -72,6 +106,10 @@ export async function loadPoses(id: string, char: Character): Promise<Record<Pos
       out[pose] = tex;
     }),
   );
+  if (idle) {
+    const [meta, cutin, blink] = await Promise.all([loadMeta(id), loadImage(`characters/${id}/cutin`), loadImage(`characters/${id}/blink`)]);
+    out.art = { meta, cutin, blink };
+  }
   return out;
 }
 

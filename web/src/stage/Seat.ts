@@ -8,7 +8,9 @@ import { type Face, makeSticker } from '../fx/stickers';
 import { CardSprite } from '../table/CardSprite';
 import { FONT, FONT_BRUSH, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
+import type { PoseSet, RealArt } from './assets';
 import { CHIP_COLORS, PAL, type Pose, paintGlow } from './painter';
+import { type Rim, rimFor } from './rim';
 
 let glowTex: Texture | null = null;
 
@@ -43,6 +45,12 @@ export function chipStack(amount: number, unit: number, scale = 1): Container {
   return c;
 }
 
+/** Multiplies two colours channel by channel. */
+function mulColor(a: number, b: number): number {
+  const ch = (s: number) => Math.round((((a >> s) & 255) * ((b >> s) & 255)) / 255) << s;
+  return ch(16) | ch(8) | ch(0);
+}
+
 function shade(c: number, k: number): number {
   const r = ((c >> 16) & 255) * k, g = ((c >> 8) & 255) * k, b = (c & 255) * k;
   return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
@@ -59,9 +67,19 @@ export class Seat extends Container {
   readonly avatar = new Container();
   /** Everything on or above the table (plate, chips, cards, bubbles); drawn in front of the table rim. */
   readonly front = new Container();
+  /** Halo, art, rim light and blink, scaled (and mirrored) together. */
+  private body = new Container();
   private figure = new Sprite();
+  private halo = new Sprite();
+  private rim = new Sprite();
+  private blink = new Sprite();
+  private nextBlink = 0;
+  private blinkUntil = 0;
+  private art?: RealArt;
+  /** -1 when the art is mirrored to turn toward the middle of the table. */
+  private dir = 1;
   private spotlight = new Sprite();
-  private poses: Record<Pose, Texture>;
+  private poses: PoseSet;
   private basePose: Pose = 'idle';
   private gray = new ColorMatrixFilter();
 
@@ -98,21 +116,32 @@ export class Seat extends Container {
   allIn = false;
   expression = Expression.Calm;
 
-  constructor(seat: number, char: Character, spot: SeatSpot, poses: Record<Pose, Texture>, isHero: boolean) {
+  constructor(seat: number, char: Character, spot: SeatSpot, poses: PoseSet, isHero: boolean) {
     super();
     this.seat = seat;
     this.char = char;
     this.spot = spot;
     this.isHero = isHero;
     this.poses = poses;
-    this.head = headOf(spot);
+    this.art = poses.art;
     this.gray.desaturate();
 
+    // Real art turns toward the middle of the table: mirror it on the side it faces away from.
+    const facing = this.art?.meta.facing ?? 'front';
+    if ((facing === 'left' && spot.base.x < 900) || (facing === 'right' && spot.base.x > 1020)) this.dir = -1;
+    this.head = this.art ? this.artHead() : headOf(spot);
+
     // Character art, anchored at the waist, scaled to the spot's depth.
-    this.figure.anchor.set(0.5, 1);
+    for (const sp of [this.halo, this.figure, this.rim, this.blink]) sp.anchor.set(0.5, 1);
+    this.halo.alpha = 0.5;
+    this.rim.blendMode = 'add';
+    this.blink.visible = false;
+    if (this.art?.blink) this.blink.texture = this.art.blink;
+    this.body.addChild(this.halo, this.figure, this.rim, this.blink);
     this.setPose('idle');
+    this.shade(0xffffff);
     this.avatar.position.set(spot.base.x, spot.base.y);
-    this.avatar.addChild(this.figure);
+    this.avatar.addChild(this.body);
     this.avatar.eventMode = 'static';
     this.avatar.cursor = 'pointer';
     // Warm light behind whoever is acting.
@@ -206,11 +235,50 @@ export class Seat extends Container {
     return this.poses[pose] ?? this.poses.idle;
   }
 
+  /** A portrait for cut-ins, anchored at her face (scale it by 1 / texture height). */
+  portrait(pose: Pose = 'angry'): Sprite {
+    const sp = new Sprite(this.poseTexture(pose));
+    const [hx, hy] = this.art?.meta.head ?? [0.5, 0.39];
+    sp.anchor.set(hx, hy);
+    return sp;
+  }
+
+  /** The close-up cut-in art, if she has one. */
+  get cutin(): { texture: Texture; eyes: [number, number] } | null {
+    const a = this.art;
+    return a?.cutin ? { texture: a.cutin, eyes: a.meta.cutinEyes ?? [0.5, 0.5] } : null;
+  }
+
+  /** Where her face is on screen, from the art's meta. */
+  private artHead(): Point {
+    const idle = this.poses.idle;
+    const k = this.spot.height / idle.height;
+    const [hx, hy] = this.art!.meta.head;
+    return { x: this.spot.base.x + this.dir * (hx - 0.5) * idle.width * k, y: this.spot.base.y - this.spot.height * (1 - hy) };
+  }
+
   setPose(pose: Pose) {
     const tex = this.poses[pose] ?? this.poses.idle;
     this.figure.texture = tex;
+    const rim: Rim | null = this.art ? rimFor(tex, this.char.color) : null;
+    this.rim.visible = this.halo.visible = !!rim;
+    if (rim) {
+      this.rim.texture = rim.rim;
+      this.halo.texture = rim.halo;
+    }
+    this.blink.visible = false;
     const k = this.spot.height / tex.height;
-    this.figure.scale.set(k);
+    this.body.scale.set(k * this.dir, k);
+  }
+
+  /** Light on her: white is fully lit; darker tints for folded, dimmed and out. Real art is
+   *  warmed to sit in the room, and its rim light follows how lit she is. */
+  private shade(tint: number) {
+    const lit = ((tint >> 16) & 255) / 255;
+    this.figure.tint = this.art ? mulColor(tint, 0xf6ece2) : tint;
+    this.blink.tint = this.figure.tint;
+    this.rim.alpha = 0.85 * lit * lit;
+    this.halo.alpha = 0.5 * lit * lit;
   }
 
   /** Back to the resting pose for the current expression. */
@@ -219,9 +287,21 @@ export class Seat extends Container {
   }
 
   tick(t: number) {
-    // breathing
+    // breathing, and with real art a slow sway from the waist and blinking
     const k = this.spot.height / this.figure.texture.height;
-    this.figure.scale.set(k, k * (1 + Math.sin(t / 900 + this.seat) * 0.008));
+    const breath = Math.sin(t / 900 + this.seat);
+    this.body.scale.set(k * this.dir * (1 - breath * 0.002), k * (1 + breath * 0.008));
+    if (this.art) {
+      this.body.rotation = Math.sin(t / 2300 + this.seat * 1.7) * 0.006;
+      if (this.art.blink && this.figure.texture === this.poses.idle) {
+        if (!this.nextBlink) this.nextBlink = t + Math.random() * 4000;
+        if (t >= this.nextBlink) {
+          this.blinkUntil = t + 130;
+          this.nextBlink = t + 2500 + Math.random() * 3500;
+        }
+        this.blink.visible = t < this.blinkUntil;
+      }
+    }
     if (this.active) this.spotlight.alpha = 0.45 + 0.12 * Math.sin(t / 260);
     if (this.thinkStart) this.thinking.text = `思考中 ${((performance.now() - this.thinkStart) / 1000).toFixed(1)}s`;
     if (this.burning) this.drawFlames(t);
@@ -305,7 +385,7 @@ export class Seat extends Container {
   dim(on: boolean) {
     this.dimmed = on;
     if (this.out) return;
-    this.figure.tint = on ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xffffff;
+    this.shade(on ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xffffff);
   }
 
   /** 本局主役: the winner stands up in the victory pose (and sits back down). */
@@ -314,7 +394,7 @@ export class Seat extends Container {
     this.standing = on;
     if (on) {
       this.setPose('win');
-      this.figure.tint = 0xffffff;
+      this.shade(0xffffff);
       await Promise.all([
         tween(this.avatar, { y: this.spot.base.y - this.spot.height * 0.12 }, 380, ease.outBack),
         tween(this.avatar.scale, { x: 1.1, y: 1.1 }, 380, ease.outBack),
@@ -353,7 +433,7 @@ export class Seat extends Container {
     this.active = on;
     if (!on) this.spotlight.alpha = 0;
     if (this.out) return;
-    this.figure.tint = on || this.isHero ? 0xffffff : this.dimmed ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xeee2e0;
+    this.shade(on || this.isHero ? 0xffffff : this.dimmed ? 0x6f5f66 : this.folded ? 0x8f8088 : 0xeee2e0);
     void tween(this.avatar.scale, { x: on ? 1.03 : 1, y: on ? 1.03 : 1 }, 250);
   }
 
@@ -369,7 +449,7 @@ export class Seat extends Container {
 
   setFolded(folded: boolean) {
     this.folded = folded;
-    this.figure.tint = folded ? 0x8f8088 : 0xffffff;
+    this.shade(folded ? 0x8f8088 : 0xffffff);
     // lean back into the shadow
     void tween(this.avatar, { y: this.spot.base.y + (folded ? 14 : 0) }, 300);
     if (folded) {
@@ -383,8 +463,8 @@ export class Seat extends Container {
 
   setOut(place: string) {
     this.out = true;
-    this.figure.filters = [this.gray];
-    this.figure.tint = 0x9a9098;
+    this.body.filters = [this.gray];
+    this.shade(0x9a9098);
     this.avatar.alpha = 0.6;
     this.setTag(place, 0xbfb8e6);
     this.cards.forEach((c) => (c.visible = false));
@@ -413,7 +493,7 @@ export class Seat extends Container {
     if (this.expression !== Expression.Angry) this.setExpression(Expression.Calm);
     this.restPose();
     if (!this.out) {
-      this.figure.tint = 0xffffff;
+      this.shade(0xffffff);
       this.setTag('');
     }
     this.showHand(null);

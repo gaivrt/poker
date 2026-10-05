@@ -14,8 +14,13 @@ export class Post {
   private flashG = new Graphics().rect(0, 0, 1920, 1080).fill(0xffffff);
   private red: Sprite;
   private pressureMode: 'off' | 'low' | 'bank' = 'off';
-  /** Filters of the impacts still playing; they can overlap. */
-  private impacts = new Set<Filter>();
+  /** The impact ripple and colour split: made once and reused (a new filter per impact
+   *  compiles its shader in the middle of the moment, which can stall the frame). */
+  private wave = new ShockwaveFilter({ center: { x: 960, y: 540 }, amplitude: 24, wavelength: 160, speed: 900, brightness: 1.15, radius: 900 });
+  private split = new RGBSplitFilter({ red: { x: 0, y: 0 }, green: { x: 0, y: 0 }, blue: { x: 0, y: 0 } });
+  /** Bumped by every impact; an older impact that ends must not cut a newer one short. */
+  private impactId = 0;
+  private impacting = false;
   quality: Quality = 'high';
 
   constructor(
@@ -52,7 +57,7 @@ export class Post {
   /** Quality filters plus any running impacts, rebuilt whenever either changes. */
   private applyWorldFilters() {
     const base: Filter[] = this.quality === 'low' ? [] : this.quality === 'medium' ? [this.grade] : [this.grade, this.grain];
-    this.world.filters = [...base, ...this.impacts];
+    this.world.filters = this.impacting ? [...base, this.wave, this.split] : base;
   }
 
   /** M15: the clock is running out ('low') or eating the time bank ('bank'). */
@@ -70,27 +75,40 @@ export class Post {
     await tween(this.flashG, { alpha: 0 }, ms, ease.outCubic);
   }
 
-  /** Ripple from a point in world space, plus a brief colour split. */
+  /** Ripple from a point in world space, plus a brief colour split. A new impact
+   *  restarts the ripple from its own point. */
   async impact(x: number, y: number, ms = 600) {
     if (this.quality === 'low') return this.flash(0.5, 200);
-    const wave = new ShockwaveFilter({ center: { x, y }, amplitude: 24, wavelength: 160, speed: 900, brightness: 1.15, radius: 900 });
-    const split = new RGBSplitFilter({ red: { x: -6, y: 0 }, green: { x: 0, y: 4 }, blue: { x: 6, y: 0 } });
-    this.impacts.add(wave).add(split);
+    const id = ++this.impactId;
+    const { wave, split } = this;
+    wave.center = { x, y };
+    wave.amplitude = 24;
+    this.impacting = true;
     this.applyWorldFilters();
-    try {
-      await animate(ms, (p) => {
-        wave.time = p * (ms / 1000);
-        const k = 1 - p;
-        split.red = { x: -6 * k, y: 0 };
-        split.blue = { x: 6 * k, y: 0 };
-      }, ease.linear);
-    } finally {
-      // Remove only this impact's filters: another one may have started meanwhile.
-      this.impacts.delete(wave);
-      this.impacts.delete(split);
+    await animate(ms, (p) => {
+      if (id !== this.impactId) return;
+      wave.time = p * (ms / 1000);
+      const k = 1 - p;
+      split.red = { x: -6 * k, y: 0 };
+      split.green = { x: 0, y: 4 * k };
+      split.blue = { x: 6 * k, y: 0 };
+    }, ease.linear);
+    if (id !== this.impactId) return;
+    this.impacting = false;
+    this.applyWorldFilters();
+  }
+
+  /** Compiles the impact shaders now (at the table's start) instead of during the first
+   *  ALL IN: runs them for a couple of frames at zero strength. */
+  async warmUp() {
+    if (this.quality === 'low' || this.impacting) return;
+    this.wave.amplitude = 0;
+    this.impacting = true;
+    this.applyWorldFilters();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (this.wave.amplitude === 0) {
+      this.impacting = false;
       this.applyWorldFilters();
-      wave.destroy();
-      split.destroy();
     }
   }
 }

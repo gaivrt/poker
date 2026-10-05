@@ -10,6 +10,11 @@ characters/<角色ID>/        角色ID：player（你）、rin（凛）、dango�
                             shizuka（静）、aoi（葵）、kitsune（狐）
   idle.png smug.png nervous.png angry.png shock.png cry.png   半身，1200×1600，透明背景，腰部在图片底边
   win.png                                                     胜利姿势，1200×1600，透明背景
+  cutin.webp      ALL IN 色带用的眼神特写（横构图，可选；没有就用 angry 半身）
+  blink.webp      闭眼的 idle，同一构图（可选；有了就会眨眼）
+  meta.json       {"head": [x, y], "facing": "left|right|front", "cutinEyes": [x, y]}
+                  head：idle 图里脸中心的位置（占宽、高的比例）；facing：身体朝向，
+                  坐在另一侧时自动镜像，让她转向桌子中间；cutinEyes：特写图里眼睛的位置
   stickers/smug.png taunt.png question.png shock.png cry.png angry.png goodhand.png thinking.png   512×512
 backgrounds/
   table.png      牌桌场景背景（不含桌子），1920×1080 或 3840×2160
