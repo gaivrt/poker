@@ -69,7 +69,7 @@ no watermark, no frame.
 
 1. 先只生成 `idle.png`，多抽几张，挑一张定稿，作为这个角色的“标准像”。
 2. 其余姿势都用 Gemini 的图片编辑：把标准像作为输入图，提示词写“Same character, same outfit, same art style as the reference image. Change only the pose and expression: …”，再接第 3 节表格里的姿势描述。
-3. 生成后抠掉灰色背景，裁切缩放到 1200×1600，放进 `public/art/characters/<ID>/`。
+3. 生成后用 `scripts/art-ingest.py char <ID> <姿势> <图片>` 处理：自动抠图（anime 抠图模型）、裁到人物、缩放进 1200×1600、腰部贴底边，直接写进 `public/art/characters/<ID>/`。背景用 `scripts/art-ingest.py bg lobby <图片>`。
 
 ## 4. 背景
 
