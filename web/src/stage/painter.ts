@@ -5,6 +5,7 @@
 // The look follows docs/10: a warm, quiet private card room in dark neutrals, soft
 // light, a dark sage table, beige trim and a single terracotta accent.
 // Until the character art arrives, the players are silhouettes with rim light.
+import type { Graphics } from 'pixi.js';
 
 export type Pose = 'idle' | 'smug' | 'nervous' | 'angry' | 'shock' | 'cry' | 'win';
 export type HairStyle = 'bob' | 'long' | 'twin' | 'short' | 'fox';
@@ -690,4 +691,22 @@ export function paintForeground(w: number, h: number): HTMLCanvasElement {
   g.beginPath(); g.arc(w * 0.885, h * 0.77, 140, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
   g.beginPath(); g.arc(w * 0.135, h * 0.8, 120, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
   return c;
+}
+
+/** Points of a rectangle cut at its top-left and bottom-right corners (the UI's card shape). */
+export function cutRect(x: number, y: number, w: number, h: number, c: number): number[] {
+  return [x + c, y, x + w, y, x + w, y + h - c, x + w - c, y + h, x, y + h, x, y + c];
+}
+
+/** A UI plate drawn in canvas the way the HTML buttons are built: a drop shadow, a dark
+ *  fill, a sheen on the top half, and a thin warm edge, all with two cut corners. */
+export function drawPlate(g: Graphics, x: number, y: number, w: number, h: number,
+  o: { cut?: number; fill?: number; alpha?: number; edge?: number; edgeAlpha?: number; edgeWidth?: number; shadow?: boolean } = {}): Graphics {
+  const c = o.cut ?? Math.min(12, h * 0.22);
+  if (o.shadow !== false) g.poly(cutRect(x + 3, y + 6, w, h, c)).fill({ color: 0x000000, alpha: 0.45 });
+  g.poly(cutRect(x, y, w, h, c)).fill({ color: o.fill ?? 0x23211f, alpha: o.alpha ?? 0.94 });
+  const sh = h * 0.46;
+  g.poly([x + c, y, x + w, y, x + w, y + sh, x, y + sh, x, y + c]).fill({ color: 0xffffff, alpha: 0.05 });
+  g.poly(cutRect(x, y, w, h, c)).stroke({ width: o.edgeWidth ?? 1.5, color: o.edge ?? PAL.beige, alpha: o.edgeAlpha ?? 0.32 });
+  return g;
 }

@@ -29,6 +29,17 @@ export interface HomeHandlers {
 }
 
 /** A character's real idle art, for portraits in the HTML UI (null while she has none). */
+/** Line icons for the small buttons (24px grid, drawn in currentColor). */
+const ICON = {
+  notes: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  leave: '<path d="M14 4h5v16h-5"/><path d="M10 8l-4 4 4 4M6 12h10"/>',
+  talk: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+  face: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2"/><circle cx="9" cy="10" r=".8" fill="currentColor"/><circle cx="15" cy="10" r=".8" fill="currentColor"/>',
+  clock: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>',
+};
+const svg = (k: keyof typeof ICON) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+
 export function portraitUrl(look: number): string | null {
   return artUrl(`characters/${CHARACTER_IDS[look]}/idle.png`);
 }
@@ -135,15 +146,15 @@ export class Overlay {
   constructor(root: HTMLElement) {
     this.root = root;
     root.append(this.home, this.hud, this.topRight, this.talkBtns, this.talk, this.panel, this.pre, this.showPrompt, this.spectate, this.notes, this.toastBox, this.nextBox, this.modal, this.loader);
-    this.talkBtns.innerHTML = `<button data-tab="line" class="tb"><b>台词</b></button><button data-tab="act" class="tb"><b>表情</b></button>`;
+    this.talkBtns.innerHTML = `<button data-tab="line" class="tb">${svg('talk')}<b>台词</b></button><button data-tab="act" class="tb">${svg('face')}<b>表情</b></button>`;
     this.talkBtns.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
       (b.onclick = () => {
         const tab = b.dataset.tab as 'line' | 'act';
         this.openTalk(!(this.talkOpen && this.talkTab === tab), tab);
       }));
-    const notesBtn = el('button', 'round', '笔记');
-    const settingsBtn = el('button', 'round', '设置');
-    const quitBtn = el('button', 'round', '离开');
+    const notesBtn = el('button', 'round', `${svg('notes')}笔记`);
+    const settingsBtn = el('button', 'round', `${svg('gear')}设置`);
+    const quitBtn = el('button', 'round', `${svg('leave')}离开`);
     notesBtn.onclick = () => this.toggleNotes();
     settingsBtn.onclick = () => this.openSettings();
     quitBtn.onclick = () => this.confirmQuit();
@@ -745,7 +756,10 @@ export class Overlay {
       let amount = clamp(minTo);
       const setAmount = (v: number) => {
         amount = clamp(v);
-        if (range) range.value = String(amount);
+        if (range) {
+          range.value = String(amount);
+          range.style.setProperty('--p', `${maxTo > minTo ? ((amount - minTo) / (maxTo - minTo)) * 100 : 100}%`);
+        }
         if (num) num.value = String(amount);
         rl.textContent = canAggro ? (amount >= maxTo ? `全下 ${fmt(maxTo)}` : `${verb} ${fmt(amount)}`) : '加注';
       };
@@ -771,7 +785,7 @@ export class Overlay {
         let next: typeof mode = 'off';
         if (left > 0) {
           const sec = Math.ceil(left / 1000);
-          clockEl.innerHTML = `⏱ <b>${sec}</b> 秒`;
+          clockEl.innerHTML = `${svg('clock')}<b>${sec}</b> 秒`;
           clockEl.className = `clock${left < 5000 ? ' low' : ''}`;
           if (left < 5000) {
             next = 'low';

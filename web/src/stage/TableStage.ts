@@ -11,7 +11,7 @@ import { CardSprite } from '../table/CardSprite';
 import { BOARD_CARD, BOARD_X, BOARD_Y, FONT_DISPLAY, FONT_NUM, POT_POS, type Point, SHOE, SPOTS, fmt } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
 import type { PoseSet } from './assets';
-import { PAL, paintBeam, paintForeground, paintTable, paintTableMarks, paintTableMask } from './painter';
+import { PAL, drawPlate, paintBeam, paintForeground, paintTable, paintTableMarks, paintTableMask } from './painter';
 import { Seat, chipStack } from './Seat';
 
 export interface StageDeps {
@@ -88,9 +88,7 @@ export class TableStage extends Container {
       this.board.push(c);
     });
 
-    const potBg = new Graphics()
-      .roundRect(-120, -24, 240, 48, 6).fill({ color: 0x1a1918, alpha: 0.82 })
-      .roundRect(-120, -24, 240, 48, 6).stroke({ width: 1.5, color: PAL.beige, alpha: 0.35 });
+    const potBg = drawPlate(new Graphics(), -120, -24, 240, 48, { cut: 10, fill: 0x1a1918, alpha: 0.86, edgeAlpha: 0.38 });
     this.potText = new Text({ text: '', style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 24, fill: PAL.paper, letterSpacing: 1 } });
     this.potText.anchor.set(0.5);
     this.potBox.addChild(potBg, this.potText);
@@ -435,10 +433,7 @@ export class TableStage extends Container {
     }
     const w = Math.max(...lines.map((l) => l.width)) + 80;
     const h = sub ? 118 : 74;
-    const bg = new Graphics()
-      .roundRect(-w / 2 + 4, -38 + 8, w, h, 8).fill({ color: 0x000000, alpha: 0.45 })
-      .roundRect(-w / 2, -38, w, h, 8).fill({ color: 0x262624, alpha: 0.92 })
-      .roundRect(-w / 2, -38, w, h, 8).stroke({ width: 1.5, color: PAL.beige, alpha: 0.35 });
+    const bg = drawPlate(new Graphics(), -w / 2, -38, w, h, { cut: 14 });
     this.banner.addChild(bg, ...lines);
     this.banner.position.set(960, 470);
     this.banner.rotation = 0;

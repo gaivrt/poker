@@ -9,7 +9,7 @@ import { CardSprite } from '../table/CardSprite';
 import { FONT, FONT_BRUSH, FONT_DISPLAY, FONT_NUM, HERO_CARD, OPP_CARD, type Point, type SeatSpot, fmt, headOf } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
 import type { PoseSet, RealArt } from './assets';
-import { CHIP_COLORS, PAL, type Pose, paintGlow } from './painter';
+import { CHIP_COLORS, PAL, type Pose, drawPlate, paintGlow } from './painter';
 import { type Rim, rimFor } from './rim';
 
 let glowTex: Texture | null = null;
@@ -156,11 +156,8 @@ export class Seat extends Container {
 
     // Paper name plate taped to the rim.
     const pw = isHero ? 210 : 190, ph = 62;
-    const paper = new Graphics()
-      .roundRect(-pw / 2 + 2, -ph / 2 + 6, pw, ph, 8).fill({ color: 0x000000, alpha: 0.45 })
-      .roundRect(-pw / 2, -ph / 2, pw, ph, 8).fill({ color: 0x262624, alpha: 0.92 })
-      .roundRect(-pw / 2, -ph / 2, pw, ph, 8).stroke({ width: 1.5, color: PAL.beige, alpha: 0.3 })
-      .rect(-pw / 2 + 4, -ph / 2 + 8, 4, ph - 16).fill(char.color);
+    const paper = drawPlate(new Graphics(), -pw / 2, -ph / 2, pw, ph, { cut: 12 })
+      .rect(-pw / 2 + 5, -ph / 2 + 10, 4, ph - 20).fill(char.color);
     const name = new Text({ text: char.name, style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 23, fill: PAL.ivory } });
     name.anchor.set(0, 0.5);
     name.position.set(-pw / 2 + 18, -12);
@@ -574,7 +571,7 @@ export class Seat extends Container {
     if (pct === null) return;
     const label = new Text({ text: `胜率 ${pct.toFixed(pct >= 99.95 || pct < 0.05 ? 0 : 1)}%`, style: { fontFamily: FONT_NUM, fontWeight: '700', fontSize: 21, fill: 0xffffff } });
     label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 14, -19, label.width + 28, 38, 6).fill(pct >= 50 ? 0x17574b : 0x8a4632).stroke({ width: 1.5, color: PAL.beige, alpha: 0.35 });
+    const bg = drawPlate(new Graphics(), -label.width / 2 - 14, -19, label.width + 28, 38, { cut: 8, fill: pct >= 50 ? 0x17574b : 0x8a4632, alpha: 1, edgeAlpha: 0.4 });
     this.badge.addChild(bg, label);
   }
 
@@ -586,7 +583,7 @@ export class Seat extends Container {
     if (e === Expression.Calm) return;
     const label = new Text({ text: EXPRESSION_LABEL[e], style: { fontFamily: FONT_DISPLAY, fontWeight: '900', fontSize: 20, fill: 0xffffff } });
     label.position.set(12, 5);
-    const bg = new Graphics().roundRect(0, 0, label.width + 24, 34, 6).fill({ color: 0x262624, alpha: 0.9 }).stroke({ width: 2, color: EXPRESSION_COLOR[e] });
+    const bg = drawPlate(new Graphics(), 0, 0, label.width + 24, 34, { cut: 7, edge: EXPRESSION_COLOR[e], edgeAlpha: 1, edgeWidth: 2, shadow: false });
     this.exprChip.addChild(bg, label);
     this.exprChip.scale.set(1.4);
     void tween(this.exprChip.scale, { x: 1, y: 1 }, 220, ease.outBack);
@@ -596,7 +593,7 @@ export class Seat extends Container {
     this.caption.removeChildren().forEach((c) => c.destroy());
     const label = new Text({ text, style: { fontFamily: FONT, fontSize: 20, fontWeight: '700', fill: 0xffffff } });
     label.anchor.set(0.5);
-    const bg = new Graphics().roundRect(-label.width / 2 - 14, -18, label.width + 28, 36, 6).fill({ color: 0x1a1918, alpha: 0.85 }).stroke({ width: 1.5, color: PAL.beige, alpha: 0.6 });
+    const bg = drawPlate(new Graphics(), -label.width / 2 - 14, -18, label.width + 28, 36, { cut: 7, fill: 0x1a1918, alpha: 0.88, edgeAlpha: 0.55, shadow: false });
     this.caption.addChild(bg, label);
     this.caption.alpha = 0;
     const y0 = this.head.y + this.spot.height * 0.12;
