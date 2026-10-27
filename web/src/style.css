@@ -171,12 +171,21 @@ input.name { display: block; width: 100%; height: 66px; border: 0; border-bottom
 
 /* Roster, tell collection, rules */
 .roster { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.roster .who { position: relative; padding: 18px 18px 18px 104px; min-height: 124px; border-radius: 10px; border: 1px solid var(--line); }
-.roster .ava { position: absolute; left: 18px; top: 20px; width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--c), #1f1e1d 80%); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 30px; }
+.roster .who { position: relative; padding: 18px 18px 16px 136px; min-height: 160px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(250,249,245,.03), rgba(0,0,0,0)), #232221;
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); transition: border-color .25s ease; }
+.roster .who::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
+.roster .who.mine { border-color: var(--accent); background: linear-gradient(180deg, rgba(217,119,87,.10), rgba(0,0,0,0)), #232221; }
+.roster .ava { position: absolute; left: 16px; top: 16px; width: 104px; height: 128px; border-radius: 6px; background: radial-gradient(circle at 35% 30%, var(--c), #1f1e1d 80%); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 34px; overflow: hidden; }
+.ava.pic { background-color: #2c2a27; background-size: 250% auto; background-position: 50% 6%; background-repeat: no-repeat; }
+.roster .ava.pic { box-shadow: inset 0 -30px 30px -20px rgba(0,0,0,.5), 0 0 0 1px var(--line-2); }
 .roster b { font-family: var(--font-display); font-size: 28px; font-weight: 700; }
 .roster small { margin-left: 8px; color: var(--muted); font-size: 13px; }
 .roster q { display: block; margin-top: 6px; font-size: 14px; color: var(--text); opacity: .8; }
-.roster em { display: inline-block; margin-top: 8px; padding: 1px 10px; border: 1px solid var(--line-2); border-radius: 4px; font-style: normal; font-size: 12px; color: var(--beige); }
+.roster .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.roster em { padding: 1px 10px; border: 1px solid var(--line-2); border-radius: 4px; font-style: normal; font-size: 12px; color: var(--beige); }
+.roster .pick { height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 15px; background: rgba(250,249,245,.04); color: var(--text); font-size: 12px; letter-spacing: .08em; transition: all .2s ease; }
+.roster .pick:hover:not(:disabled) { border-color: var(--accent); color: #fff; background: rgba(217,119,87,.25); }
+.roster .pick:disabled { border-color: var(--accent); color: var(--accent); background: none; opacity: 1; }
 .tellbook { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
 .tellbook section { padding: 14px 18px; border-radius: 10px; border: 1px solid var(--line); }
 .tellbook h4 { margin: 0 0 6px; font-family: var(--font-display); font-size: 24px; font-weight: 700; }
@@ -213,6 +222,7 @@ input.name { display: block; width: 100%; height: 66px; border: 0; border-bottom
 .home .me .who b { display: block; font-family: var(--font-display); font-size: 22px; font-weight: 700; }
 .home .me .who small { font-size: 12px; color: var(--muted); letter-spacing: .08em; }
 .home .me:hover .ava { border-color: #e0866a; }
+.home .me .ava.pic { background-size: 300% auto; background-position: 50% 5%; }
 /* top-right: system */
 .home .sys { position: absolute; right: 40px; top: 34px; display: flex; gap: 10px; }
 .home .ic { width: 52px; height: 52px; border-radius: 10px; border: 1px solid var(--line); background: rgba(31,30,29,.8); color: rgba(250,249,245,.8); display: flex; align-items: center; justify-content: center; transition: all .25s ease; }

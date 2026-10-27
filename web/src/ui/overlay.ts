@@ -5,6 +5,7 @@ import type { Difficulty, Format, Legal, SignalKindName, Standing } from '../eng
 import { CAST, type Character, GESTURE_LABEL, LINE_LABEL, STICKER_LABEL } from '../characters';
 import type { Quality } from '../fx/post';
 import { type Profile, TIERS, tierOf } from '../profile';
+import { CHARACTER_IDS, artUrl } from '../stage/assets';
 import { fmt } from '../table/layout';
 import { TELL_COUNT, TELL_UNLOCK, loadTells } from '../tells';
 
@@ -23,6 +24,13 @@ export interface HomeHandlers {
   rename: (name: string) => void;
   /** The featured character says one of her lines. */
   talk?: () => void;
+  /** You picked the character you play as. */
+  setLook?: (look: number) => void;
+}
+
+/** A character's real idle art, for portraits in the HTML UI (null while she has none). */
+export function portraitUrl(look: number): string | null {
+  return artUrl(`characters/${CHARACTER_IDS[look]}/idle.png`);
 }
 export interface Choice {
   type: 'fold' | 'check' | 'call' | 'bet' | 'raise';
@@ -354,7 +362,10 @@ export class Overlay {
     const icon = (p: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">${p}</svg>`;
     this.home.innerHTML = `
       <button class="me" title="改名">
-        <span class="ava">${esc(profile.name.slice(0, 1))}</span>
+        ${(() => {
+          const src = profile.look !== undefined ? portraitUrl(profile.look) : null;
+          return src ? `<span class="ava pic" style="background-image:url(${src})"></span>` : `<span class="ava">${esc(profile.name.slice(0, 1))}</span>`;
+        })()}
         <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分 · 已打 ${profile.games} 局</small></span>
       </button>
       <div class="sys">
@@ -413,7 +424,10 @@ export class Overlay {
     this.home.querySelectorAll<HTMLButtonElement>('[data-k]').forEach((b) =>
       (b.onclick = () => {
         const k = b.dataset.k;
-        if (k === 'roster') this.rosterDialog();
+        if (k === 'roster') this.rosterDialog(profile, (look) => {
+          h.setLook?.(look);
+          this.showHome({ ...profile, look }, h);
+        });
         else if (k === 'tells') this.tellsDialog();
         else if (k === 'rules') this.rulesDialog();
         else this.toast('牌谱回放正在开发');
@@ -491,18 +505,28 @@ export class Overlay {
     (this.modal.querySelector('.ok') as HTMLButtonElement).onclick = ok;
   }
 
-  private rosterDialog() {
+  private rosterDialog(profile: Profile, pick: (look: number) => void) {
     const tells = loadTells();
     this.dialog('wide', `
       <div class="title2">角色</div>
       <div class="roster">${CAST.map((c, i) => {
         const got = Object.values(tells).filter((t) => t.character === c.name && t.count >= TELL_UNLOCK).length;
-        return `<div class="who" style="--c:${hex(c.color)}"><span class="ava">${c.name}</span>
+        const src = portraitUrl(i);
+        const mine = profile.look === i;
+        return `<div class="who${mine ? ' mine' : ''}" style="--c:${hex(c.color)}">
+          ${src ? `<span class="ava pic" style="background-image:url(${src})"></span>` : `<span class="ava">${c.name}</span>`}
           <b>${c.name}</b><small>${c.style}</small><q>${esc(c.lines.win[0] ?? '')}</q>
-          <em>破绽 ${got}/${TELL_COUNT[i]}</em></div>`;
+          <span class="foot"><em>破绽 ${got}/${TELL_COUNT[i]}</em>
+          <button class="pick" data-i="${i}" ${mine ? 'disabled' : ''}>${mine ? '当前形象' : '设为我的形象'}</button></span></div>`;
       }).join('')}</div>
-      <div class="hint center">立绘为占位，角色设计确定后替换。</div>
+      <div class="hint center">选一位当你在牌桌上的形象；单人练习时她不会再坐到对面。</div>
       <button class="primary close">关闭</button>`);
+    this.modal.querySelectorAll<HTMLButtonElement>('.pick').forEach((b) =>
+      (b.onclick = () => {
+        const look = Number(b.dataset.i);
+        pick(look);
+        this.rosterDialog({ ...profile, look }, pick);
+      }));
   }
 
   private tellsDialog() {

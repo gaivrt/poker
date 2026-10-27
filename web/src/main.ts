@@ -195,6 +195,10 @@ async function showHome() {
       saveProfile(profile);
     },
     talk: () => lobby?.say(),
+    setLook: (look: number) => {
+      profile.look = look;
+      saveProfile(profile);
+    },
   };
   overlay.showHome(profile, handlers);
   // Signed in to the server in the background: show the online rank (and rejoin a running game).
@@ -265,7 +269,8 @@ async function beginOnline(m: Extract<ServerMsg, { t: 'matched' }>) {
   if (m.rejoin) overlay.toast('回到牌桌：正在追上进度');
   teardown();
   const cast = m.seats.map((s, i) => (i === 0 ? HERO : s.bot ? CAST[s.look % CAST.length] : personCharacter(s)));
-  const looks = m.seats.map((s, i) => (i === 0 ? -1 : s.look));
+  // The server hands each person a character no bot at this table is using.
+  const looks = m.seats.map((s) => s.look);
   const built = await buildTable(cast, looks);
   onlineGame = true;
   const finish = () => {
@@ -305,10 +310,18 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
   overlay.loading(true);
   // ?seed=N replays the exact same deal (bug reports, tests).
   const seedParam = new URLSearchParams(location.search).get('seed');
-  const seed = seedParam !== null ? Number(seedParam) >>> 0 : (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+  const randomSeed = () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+  let seed = seedParam !== null ? Number(seedParam) >>> 0 : randomSeed();
   game = new Game(engine, format, difficulty, seed);
+  // The character you picked doesn't also sit across from you: deal again until she's free.
+  const mine = loadProfile().look;
+  for (let i = 0; seedParam === null && mine !== undefined && game.roster.includes(mine) && i < 40; i++) {
+    game.dispose();
+    seed = randomSeed() ^ (i * 0x9e3779b9);
+    game = new Game(engine, format, difficulty, seed >>> 0);
+  }
   const cast: Character[] = game.roster.map(characterFor);
-  const { stage: st, moments } = await buildTable(cast, game.roster);
+  const { stage: st, moments } = await buildTable(cast, looksFor(game.roster, mine));
   const g = game;
   director = new Director(g, st, overlay, cast, moments, () => {
     applySettings();
@@ -335,7 +348,13 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
   void director.run();
 }
 
-/** Loads art for the cast, builds the table scene and its big moments. looks: art per seat (-1 = you). */
+/** Art per seat for an offline table: you play as your pick, or as whoever isn't seated. */
+function looksFor(roster: number[], mine: number | undefined): number[] {
+  const you = mine !== undefined && !roster.includes(mine) ? mine : [0, 1, 2, 3, 4, 5].find((p) => !roster.includes(p)) ?? -1;
+  return roster.map((r) => (r < 0 ? you : r));
+}
+
+/** Loads art for the cast, builds the table scene and its big moments. looks: art per seat (-1 = painted placeholder). */
 async function buildTable(cast: Character[], looks: number[]) {
   overlay.loading(true);
   const [bg, tableArt, ...poses] = await Promise.all([

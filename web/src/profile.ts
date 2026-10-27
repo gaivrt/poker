@@ -6,6 +6,8 @@ export interface Profile {
   name: string;
   points: number;
   games: number;
+  /** The character you play as (personality preset index), if you picked one. */
+  look?: number;
 }
 
 export const TIERS = [
@@ -29,7 +31,10 @@ export function tierOf(points: number) {
 export function loadProfile(): Profile {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '');
-    if (p && typeof p.points === 'number') return { name: String(p.name || '玩家'), points: p.points, games: p.games | 0 };
+    if (p && typeof p.points === 'number') {
+      const look = Number.isInteger(p.look) && p.look >= 0 && p.look < 6 ? p.look : undefined;
+      return { name: String(p.name || '玩家'), points: p.points, games: p.games | 0, look };
+    }
   } catch {
     /* storage unavailable or empty */
   }
