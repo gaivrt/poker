@@ -195,6 +195,7 @@ async function showHome() {
       profile.name = name;
       saveProfile(profile);
     },
+    talk: () => lobby?.say(),
   };
   overlay.showHome(profile, handlers);
   // Signed in to the server in the background: show the online rank (and rejoin a running game).

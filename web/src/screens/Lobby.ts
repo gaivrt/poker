@@ -1,5 +1,5 @@
-// The home screen's canvas half: the casino lobby, the featured character in a
-// victory pose with chips drifting around her, and her lines when tapped.
+// The home screen's canvas half: the salon, the featured character standing in the
+// middle (the HTML overlay frames her with the modes), and her lines when tapped.
 import { Container, Graphics, Sprite, Text, Texture, Ticker } from 'pixi.js';
 import { sfx } from '../audio/sfx';
 import type { Character } from '../characters';
@@ -7,6 +7,9 @@ import type { Particles } from '../fx/particles';
 import { PAL, paintBeam } from '../stage/painter';
 import { FONT, FONT_DISPLAY } from '../table/layout';
 import { ease, tween, wait } from '../tween';
+
+/** Where she stands: the open stage in the middle of the lobby background. */
+const X = 980;
 
 const LINES = ['今晚，想赢点什么？', '坐下吧。牌桌可不等人。', '看穿我，你就赢了。', '本局主役，非我莫属。', '筹码会说话——你听得见吗？'];
 
@@ -23,15 +26,15 @@ export class Lobby extends Container {
     back.width = 1920;
     back.height = 1080;
     // a spotlight on her: a warm cone and a pool of light at her feet
-    const beam = new Sprite(Texture.from(paintBeam(1920, 1080, 1380, -60, 1080, 560)));
+    const beam = new Sprite(Texture.from(paintBeam(1920, 1080, X, -60, X - 300, 560)));
     beam.blendMode = 'add';
-    const glow = new Graphics().ellipse(1380, 1010, 520, 90).fill({ color: PAL.paper, alpha: 0.05 });
+    const glow = new Graphics().ellipse(X, 1010, 520, 90).fill({ color: PAL.paper, alpha: 0.05 });
     glow.blendMode = 'add';
     this.figure = new Sprite(pose);
     this.figure.anchor.set(0.5, 1);
     const k = 980 / pose.height;
     this.figure.scale.set(k);
-    this.figure.position.set(1380, 1120);
+    this.figure.position.set(X, 1120);
     this.figure.eventMode = 'static';
     this.figure.cursor = 'pointer';
     this.figure.on('pointertap', () => this.say());
@@ -48,7 +51,7 @@ export class Lobby extends Container {
     if (performance.now() > this.chipTimer) {
       // a little dust drifting up through the light
       this.chipTimer = performance.now() + 1400;
-      this.particles.sparkle(1380 + (Math.random() - 0.5) * 500, 600 + Math.random() * 300, 2, 140);
+      this.particles.sparkle(X + (Math.random() - 0.5) * 500, 600 + Math.random() * 300, 2, 140);
     }
   }
 
@@ -63,7 +66,7 @@ export class Lobby extends Container {
     t.position.set(26, 16);
     who.position.set(28, 24 + t.height);
     this.bubble.addChild(bg, t, who);
-    this.bubble.position.set(1530, 300);
+    this.bubble.position.set(470, 330);
     this.bubble.rotation = 0;
     this.bubble.scale.set(0.6);
     this.bubble.alpha = 0;

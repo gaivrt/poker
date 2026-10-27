@@ -21,6 +21,8 @@ export interface HomeHandlers {
   /** Ranked, online: real players, AI fills the empty seats. */
   online: (format: 'quick' | 'standard') => void;
   rename: (name: string) => void;
+  /** The featured character says one of her lines. */
+  talk?: () => void;
 }
 export interface Choice {
   type: 'fold' | 'check' | 'call' | 'bet' | 'raise';
@@ -349,36 +351,66 @@ export class Overlay {
     const found = Object.values(tells).filter((r) => r.count >= TELL_UNLOCK).length;
     const total = TELL_COUNT.reduce((a, b) => a + b, 0);
     this.home.classList.remove('hidden');
+    const icon = (p: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">${p}</svg>`;
     this.home.innerHTML = `
-      <div class="topbar">
-        <button class="me" title="改名"><span class="prog"><i style="width:${Math.round(t.progress * 100)}%"></i></span>
-          <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分</small></span></button>
-        <button class="gear">设置</button>
+      <button class="me" title="改名">
+        <span class="ava">${esc(profile.name.slice(0, 1))}</span>
+        <span class="who"><b>${esc(profile.name)}</b><small>${t.name} · ${profile.points} 分 · 已打 ${profile.games} 局</small></span>
+      </button>
+      <div class="sys">
+        <button class="ic" data-k="rules" title="规则">${icon('<path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h8M8 18h5"/>')}</button>
+        <button class="ic gear" title="设置">${icon('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>')}</button>
       </div>
-      <div class="logo"><div class="l1">牌桌心理战</div><div class="l2">HOLD'EM · MIND GAMES</div></div>
+      <div class="host">
+        <span class="k">展示角色</span><b>葵</b><small>平衡型 · 主页看板娘</small>
+        <button class="talk">和她说话</button>
+      </div>
       <div class="modes">
-        <button class="poster ranked"><span class="n">01</span>
-          <span class="t"><b>段位赛</b><small>联网对战真人 · 人不够时 AI 补位 · ${t.name}${t.next ? `，距 ${t.next} 还差 ${t.toNext} 分` : ''}</small></span>
-          <span class="cta">开始匹配</span></button>
-        <button class="poster practice"><span class="n">02</span><span class="t"><b>单人练习</b><small>自选赛制和难度</small></span></button>
-        <button class="poster friends" disabled><span class="n">03</span><span class="t"><b>好友房</b><small>开发中</small></span></button>
-        <div class="rounds">
-          <button data-k="roster">角色</button>
-          <button data-k="tells">破绽图鉴<sup>${found}/${total}</sup></button>
-          <button data-k="replays">牌谱</button>
-          <button data-k="rules">规则</button>
-        </div>
+        <div class="chip ranked"><div>
+          <span class="k">RANKED · 联网 6 人桌</span>
+          <b>段位赛</b><small>人不够时 AI 补位</small>
+          <span class="badge"><svg viewBox="0 0 128 140"><path d="M64 4l56 30v60l-56 42L8 94V34z"/><path class="in" d="M64 18l44 24v46l-44 33-44-33V42z"/></svg><i>${t.name}</i></span>
+          <div class="foot">
+            <span class="prog"><small>${t.next ? `距 ${t.next} 还差 ${t.toNext} 分` : '已是最高段位'}</small><span class="bar"><i style="width:${Math.round(t.progress * 100)}%"></i></span></span>
+            <span class="fmt"><button data-f="quick" class="on">快速</button><button data-f="standard">标准</button></span>
+            <button class="match">开始匹配</button>
+          </div>
+        </div></div>
+        <button class="chip practice"><div>
+          ${icon('<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v4c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6M5 10v4c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-4M5 14v4c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-4"/>')}
+          <span class="k">PRACTICE</span><b>单人练习</b><small>和 AI 角色对局 · 自选难度</small>
+        </div></button>
+        <button class="chip friends" disabled><div>
+          ${icon('<ellipse cx="12" cy="13" rx="8" ry="4.5"/><circle cx="12" cy="5" r="1.2"/><circle cx="3.5" cy="10" r="1.2"/><circle cx="20.5" cy="10" r="1.2"/><circle cx="6" cy="19.5" r="1.2"/><circle cx="18" cy="19.5" r="1.2"/>')}
+          <span class="k">FRIENDS</span><b>好友房</b><small>开发中</small>
+        </div></button>
+        <button class="chip strip" data-k="tells"><div>
+          <span class="k">破绽图鉴 · 已发现 ${found} / ${total}</span><b>看穿她们的小动作</b><span class="more">查看 ›</span>
+        </div></button>
       </div>
-      <div class="news"><b>公告</b><span>原型测试中，角色立绘为占位</span></div>`;
+      <div class="dock"><div>
+        <button data-k="roster">${icon('<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>')}<span>角色</span></button>
+        <button data-k="tells">${icon('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>')}<span>破绽图鉴</span></button>
+        <button data-k="replays">${icon('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/>')}<span>牌谱</span></button>
+        <button data-k="rules">${icon('<path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h8M8 18h5"/>')}<span>规则</span></button>
+      </div></div>
+      <div class="news"><b>公告</b><span>原型测试中 · 角色立绘为 AI 生成的第一版</span></div>`;
     const q = <T extends HTMLElement>(sel: string) => this.home.querySelector(sel) as T;
     q<HTMLButtonElement>('.gear').onclick = () => this.openSettings();
     q<HTMLButtonElement>('.me').onclick = () => this.renameDialog(profile.name, (n) => {
       h.rename(n);
       this.showHome({ ...profile, name: n }, h);
     });
-    q<HTMLButtonElement>('.ranked').onclick = () => this.formatDialog(true, (f) => h.online(f === 'standard' ? 'standard' : 'quick'), profile);
+    q<HTMLButtonElement>('.talk').onclick = () => h.talk?.();
+    let fmt: 'quick' | 'standard' = 'quick';
+    this.home.querySelectorAll<HTMLButtonElement>('.fmt button').forEach((b) =>
+      (b.onclick = () => {
+        fmt = b.dataset.f as typeof fmt;
+        this.home.querySelectorAll('.fmt button').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    q<HTMLButtonElement>('.ranked .match').onclick = () => h.online(fmt);
     q<HTMLButtonElement>('.practice').onclick = () => this.formatDialog(false, (f, d) => h.start(f, d, false), profile);
-    this.home.querySelectorAll<HTMLButtonElement>('.rounds button').forEach((b) =>
+    this.home.querySelectorAll<HTMLButtonElement>('[data-k]').forEach((b) =>
       (b.onclick = () => {
         const k = b.dataset.k;
         if (k === 'roster') this.rosterDialog();
