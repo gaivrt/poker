@@ -1,18 +1,25 @@
 // Hot-swappable art: real PNGs from public/art/ when present, otherwise the
 // procedural placeholders from painter.ts. See public/art/README.md.
 import { Assets, Texture } from 'pixi.js';
-import files from 'virtual:art-manifest';
+import files, { inline } from 'virtual:art-manifest';
 import type { Character } from '../characters';
 import { type HairStyle, type Pose, paintBust, paintRoom } from './painter';
 
 const available = new Set(files);
-const url = (path: string) => `${import.meta.env.BASE_URL}art/${path}`;
+const url = (path: string) => inline[path] ?? `${import.meta.env.BASE_URL}art/${path}`;
+
+/** The file for a .png path as shipped: the .webp next to it wins (smaller builds). */
+function shipped(path: string): string | null {
+  const webp = path.replace(/\.png$/, '.webp');
+  return available.has(webp) ? webp : available.has(path) ? path : null;
+}
 
 export function hasArt(path: string): boolean {
-  return available.has(path);
+  return shipped(path) !== null;
 }
 export function artUrl(path: string): string | null {
-  return available.has(path) ? url(path) : null;
+  const p = shipped(path);
+  return p ? url(p) : null;
 }
 
 /** Folder names under art/characters/ (index = personality preset; -1 = the player). */
@@ -38,10 +45,10 @@ export async function loadPoses(id: string, char: Character): Promise<Record<Pos
       const key = `${id}/${pose}`;
       let tex = cache.get(key);
       if (!tex) {
-        const path = `characters/${id}/${pose}.png`;
-        if (available.has(path)) {
+        const src = artUrl(`characters/${id}/${pose}.png`);
+        if (src) {
           try {
-            tex = await Assets.load<Texture>(url(path));
+            tex = await Assets.load<Texture>(src);
           } catch {
             tex = undefined;
           }
@@ -61,10 +68,10 @@ export async function loadBackground(name: 'table' | 'lobby', vp: { x: number; y
   const hit = cache.get(key);
   if (hit) return hit;
   let tex: Texture | undefined;
-  const path = `backgrounds/${name}.png`;
-  if (available.has(path)) {
+  const src = artUrl(`backgrounds/${name}.png`);
+  if (src) {
     try {
-      tex = await Assets.load<Texture>(url(path));
+      tex = await Assets.load<Texture>(src);
     } catch {
       tex = undefined;
     }

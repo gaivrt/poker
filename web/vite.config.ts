@@ -25,7 +25,7 @@ function artManifest(): Plugin {
   return {
     name: 'art-manifest',
     resolveId: (source) => (source === id ? '\0' + id : null),
-    load: (source) => (source === '\0' + id ? `export default ${JSON.stringify(walk(root))};` : null),
+    load: (source) => (source === '\0' + id ? `export default ${JSON.stringify(walk(root))};\nexport const inline = {};` : null),
     configureServer(server) {
       // New art dropped in while the dev server runs: reload with a fresh manifest.
       server.watcher.add(root);
