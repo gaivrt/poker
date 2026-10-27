@@ -17,7 +17,7 @@ export class Lobby extends Container {
   private tick = () => this.update();
   private chipTimer = 0;
 
-  constructor(bg: Texture, pose: Texture, private char: Character, private particles: Particles, fx: Container) {
+  constructor(bg: Texture, pose: Texture, private char: Character, private particles: Particles, private fx: Container) {
     super();
     const back = new Sprite(bg);
     back.width = 1920;
@@ -73,6 +73,8 @@ export class Lobby extends Container {
 
   dispose() {
     Ticker.shared.remove(this.tick);
+    // the effects layer is shared with the table; don't take it down with us
+    if (this.fx.parent === this) this.fx.removeFromParent();
     this.destroy({ children: true });
   }
 }
