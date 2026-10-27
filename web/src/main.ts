@@ -186,6 +186,7 @@ async function showHome() {
   music.play('lobby');
   lobby = new Lobby(bg, poses.smug, mascot, particles, worldFx);
   world.addChild(lobby);
+  if (debug) debug.lobby = lobby;
   const profile = loadProfile();
   const handlers = {
     start: (format: Format, difficulty: Difficulty, ranked: boolean) => void start(format, difficulty, ranked),
