@@ -18,7 +18,7 @@ function artManifest(): Plugin {
     for (const name of entries) {
       const p = join(dir, name);
       if (statSync(p).isDirectory()) out = out.concat(walk(p));
-      else if (/\.(png|jpe?g|webp|mp3|ogg|wav)$/i.test(name)) out.push(relative(root, p).split('\\').join('/'));
+      else if (/\.(png|jpe?g|webp|json|mp3|ogg|wav)$/i.test(name)) out.push(relative(root, p).split('\\').join('/'));
     }
     return out;
   };

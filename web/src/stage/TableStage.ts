@@ -10,7 +10,8 @@ import type { Post } from '../fx/post';
 import { CardSprite } from '../table/CardSprite';
 import { BOARD_CARD, BOARD_X, BOARD_Y, FONT_DISPLAY, FONT_NUM, POT_POS, type Point, SHOE, SPOTS, fmt } from '../table/layout';
 import { animate, ease, tween, wait } from '../tween';
-import { PAL, paintBeam, paintForeground, paintTable, type Pose } from './painter';
+import type { PoseSet } from './assets';
+import { PAL, paintBeam, paintForeground, paintTable, paintTableMarks, paintTableMask } from './painter';
 import { Seat, chipStack } from './Seat';
 
 export interface StageDeps {
@@ -44,8 +45,9 @@ export class TableStage extends Container {
 
   constructor(
     cast: Character[],
-    poses: Record<Pose, Texture>[],
+    poses: PoseSet[],
     bg: Texture,
+    tableArt: Texture | null,
     private deps: StageDeps,
   ) {
     super();
@@ -57,7 +59,18 @@ export class TableStage extends Container {
     const beam = new Sprite(paintBeamTexture());
     beam.blendMode = 'add';
     this.background.addChild(bgSprite, beam);
-    this.tableLayer.addChild(new Sprite(paintTableTexture()));
+    if (tableArt) {
+      // painted table: generated over the whole frame, cut out along the table's rail
+      const table = new Sprite(tableArt);
+      table.width = 1920;
+      table.height = 1080;
+      const mask = new Sprite(Texture.from(paintTableMask(1920, 1080)));
+      table.mask = mask;
+      this.tableLayer.addChild(table, mask);
+    } else {
+      // the code-drawn table gets its printed marks here; painted art has its own
+      this.tableLayer.addChild(new Sprite(paintTableTexture()), new Sprite(paintTableMarksTexture()));
+    }
 
     // Opponents sit behind the table (far ones first so near ones overlap them).
     const order = [3, 2, 4, 1, 5];
@@ -465,6 +478,11 @@ let fgTex: Texture | null = null;
 function paintTableTexture(): Texture {
   tableTex ??= Texture.from(paintTable(1920, 1080));
   return tableTex;
+}
+let marksTex: Texture | null = null;
+function paintTableMarksTexture(): Texture {
+  marksTex ??= Texture.from(paintTableMarks(1920, 1080));
+  return marksTex;
 }
 let beamTex: Texture | null = null;
 function paintBeamTexture(): Texture {

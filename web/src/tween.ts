@@ -16,6 +16,14 @@ export const ease = {
 
 export const timing = { scale: 1 };
 
+/** Ends a per-frame step. An error inside a ticker callback would otherwise stop Pixi's
+ *  frame loop for good (it never schedules the next frame), freezing the whole game. */
+function stop(step: () => void, resolve: () => void, err?: unknown) {
+  Ticker.shared.remove(step);
+  if (err) console.error('animation step failed', err);
+  resolve();
+}
+
 type Numeric<T> = { [K in keyof T as T[K] extends number ? K : never]?: number };
 
 export function tween<T extends object>(target: T, to: Numeric<T>, ms: number, e: Ease = ease.outCubic): Promise<void> {
@@ -33,11 +41,14 @@ export function tween<T extends object>(target: T, to: Numeric<T>, ms: number, e
     const step = () => {
       const p = Math.min(1, (performance.now() - start) / dur);
       const v = e(p);
-      for (const k of keys) rec[k] = from[k] + ((to as Record<string, number>)[k] - from[k]) * v;
-      if (p >= 1) {
-        Ticker.shared.remove(step);
-        resolve();
+      try {
+        for (const k of keys) rec[k] = from[k] + ((to as Record<string, number>)[k] - from[k]) * v;
+      } catch (err) {
+        // e.g. the target was destroyed mid-tween: end this tween, keep the frame loop alive
+        stop(step, resolve, err);
+        return;
       }
+      if (p >= 1) stop(step, resolve);
     };
     Ticker.shared.add(step);
   });
@@ -64,11 +75,13 @@ export function animate(ms: number, fn: (p: number) => void, e: Ease = ease.outC
     const start = performance.now();
     const step = () => {
       box.p = Math.min(1, (performance.now() - start) / dur);
-      fn(e(box.p));
-      if (box.p >= 1) {
-        Ticker.shared.remove(step);
-        resolve();
+      try {
+        fn(e(box.p));
+      } catch (err) {
+        stop(step, resolve, err);
+        return;
       }
+      if (box.p >= 1) stop(step, resolve);
     };
     Ticker.shared.add(step);
   });

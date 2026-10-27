@@ -224,10 +224,19 @@ export class Moments {
           .poly([-120, 766, 2040, 656, 2040, 658, -120, 768]).fill({ color: PAL.beige, alpha: 0.6 })
           .poly([-120, 776, 2040, 666, 2040, 670, -120, 780]).fill(PAL.beige));
         const mask = new Graphics().poly(poly).fill(0xffffff);
-        const portrait = new Sprite(s.poseTexture('angry'));
-        portrait.anchor.set(0.5, 0.39);
-        portrait.scale.set(1.05 * (800 / portrait.texture.height));
-        portrait.position.set(470, 520);
+        // her close-up if she has one (eyes on the band's left third), else her portrait
+        const cut = s.cutin;
+        let portrait: Sprite;
+        if (cut) {
+          portrait = new Sprite(cut.texture);
+          portrait.anchor.set(cut.eyes[0], cut.eyes[1]);
+          portrait.scale.set(560 / cut.texture.height);
+          portrait.position.set(560, 500);
+        } else {
+          portrait = s.portrait('angry');
+          portrait.scale.set(1.05 * (800 / portrait.texture.height));
+          portrait.position.set(470, 520);
+        }
         portrait.mask = mask;
         const say = new Text({ text: `${c.name}「${line}」`, style: { fontFamily: FONT, fontSize: 40, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x1f1e1d, width: 7 } } });
         say.position.set(900, 650);
@@ -299,8 +308,7 @@ export class Moments {
         const poly = left ? [-80, -40, 1020, -40, 900, 1120, -80, 1120] : [1040, -40, 2000, -40, 2000, 1120, 920, 1120];
         const g = this.luxe(poly, s.char.color);
         const mask = new Graphics().poly(poly).fill(0xffffff);
-        const pic = new Sprite(s.poseTexture('angry'));
-        pic.anchor.set(0.5, 0.39);
+        const pic = s.portrait('angry');
         const sc = 1.35 * (800 / pic.texture.height);
         pic.scale.set(left ? sc : -sc, sc);
         pic.position.set(left ? 470 : 1450, 470);
@@ -380,8 +388,7 @@ export class Moments {
         const poly = [x0 + 60, -40, x0 + w + 60, -40, x0 + w - 60, 1120, x0 - 60, 1120];
         const g = this.luxe(poly, s.char.color);
         const mask = new Graphics().poly(poly).fill(0xffffff);
-        const pic = new Sprite(s.poseTexture('angry'));
-        pic.anchor.set(0.5, 0.39);
+        const pic = s.portrait('angry');
         pic.scale.set(1.15 * (800 / pic.texture.height));
         pic.position.set(x0 + w / 2, 470);
         pic.mask = mask;

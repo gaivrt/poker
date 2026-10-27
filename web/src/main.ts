@@ -15,8 +15,7 @@ import { type Quality, Post } from './fx/post';
 import { makeSticker } from './fx/stickers';
 import { loadProfile, saveProfile } from './profile';
 import { Lobby } from './screens/Lobby';
-import { characterId, loadBackground, loadPoses } from './stage/assets';
-import type { Pose } from './stage/painter';
+import { type PoseSet, characterId, loadBackground, loadPoses, loadTableArt } from './stage/assets';
 import { TableStage } from './stage/TableStage';
 import { DESIGN_H, DESIGN_W } from './table/layout';
 import { timing } from './tween';
@@ -339,13 +338,15 @@ async function start(format: Format, difficulty: Difficulty, ranked: boolean) {
 /** Loads art for the cast, builds the table scene and its big moments. looks: art per seat (-1 = you). */
 async function buildTable(cast: Character[], looks: number[]) {
   overlay.loading(true);
-  const [bg, ...poses] = await Promise.all([
+  const [bg, tableArt, ...poses] = await Promise.all([
     loadBackground('table', { x: 960, y: 330 }),
+    loadTableArt(),
     ...looks.map((r, i) => loadPoses(characterId(r), cast[i])),
   ]);
   music.play('table');
-  stage = new TableStage(cast, poses as Record<Pose, Texture>[], bg, { camera, post, particles, screen });
+  stage = new TableStage(cast, poses as PoseSet[], bg, tableArt, { camera, post, particles, screen });
   world.addChild(stage);
+  void post.warmUp();
   resetFpsWatch();
   world.addChild(worldFx);
   overlay.loading(false);
@@ -365,7 +366,7 @@ async function buildTable(cast: Character[], looks: number[]) {
       }
     };
     const out: { idle: string; win: string }[] = [];
-    for (const p of poses as Record<Pose, Texture>[]) out.push({ idle: await shot(p.idle), win: await shot(p.win) });
+    for (const p of poses as PoseSet[]) out.push({ idle: await shot(p.idle), win: await shot(p.win) });
     overlay.portraits = out;
   })();
   const moments = new Moments({ stage, camera, post, particles, screen });
