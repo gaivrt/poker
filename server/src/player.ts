@@ -12,6 +12,8 @@ export class Player {
   seat = -1;
   /** Left the table on purpose: it plays itself until the game ends. */
   away = false;
+  /** The character they picked, if any (set when they queue). */
+  look: number | undefined;
   private waiters: Waiter[] = [];
 
   account: Account;

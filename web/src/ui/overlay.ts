@@ -4,7 +4,7 @@ import { sfx } from '../audio/sfx';
 import type { Difficulty, Format, Legal, SignalKindName, Standing } from '../engine';
 import { CAST, type Character, GESTURE_LABEL, LINE_LABEL, STICKER_LABEL } from '../characters';
 import type { Quality } from '../fx/post';
-import { type Profile, TIERS, tierOf } from '../profile';
+import { type Profile, TIERS, hostIndex, tierOf } from '../profile';
 import { CHARACTER_IDS, artUrl } from '../stage/assets';
 import { fmt } from '../table/layout';
 import { TELL_COUNT, TELL_UNLOCK, loadTells } from '../tells';
@@ -384,7 +384,7 @@ export class Overlay {
         <button class="ic gear" title="设置">${icon('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>')}</button>
       </div>
       <div class="host">
-        <span class="k">展示角色</span><b>葵</b><small>平衡型 · 主页看板娘</small>
+        <span class="k">展示角色</span><b>${CAST[hostIndex(profile)].name}</b><small>${CAST[hostIndex(profile)].style} · 主页看板娘</small>
         <button class="talk">和她说话</button>
       </div>
       <div class="modes">
@@ -530,7 +530,7 @@ export class Overlay {
           <span class="foot"><em>破绽 ${got}/${TELL_COUNT[i]}</em>
           <button class="pick" data-i="${i}" ${mine ? 'disabled' : ''}>${mine ? '当前形象' : '设为我的形象'}</button></span></div>`;
       }).join('')}</div>
-      <div class="hint center">选一位当你在牌桌上的形象；单人练习时她不会再坐到对面。</div>
+      <div class="hint center">选一位当你的形象，主页和牌桌上都是她，对面不会再有她。联网时如果别的玩家也选了她，可能换一位。</div>
       <button class="primary close">关闭</button>`);
     this.modal.querySelectorAll<HTMLButtonElement>('.pick').forEach((b) =>
       (b.onclick = () => {

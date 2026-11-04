@@ -55,6 +55,13 @@ export class Lobby extends Container {
     }
   }
 
+  /** Someone else takes the stage (the player picked a new look). */
+  setCharacter(pose: Texture, char: Character) {
+    this.figure.texture = pose;
+    this.char = char;
+    this.say(LINES[0]);
+  }
+
   say(text = LINES[Math.floor(Math.random() * LINES.length)]) {
     sfx.play('chime', 0.4);
     this.bubble.removeChildren().forEach((c) => c.destroy());

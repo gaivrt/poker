@@ -30,7 +30,8 @@ export interface SeatInfo {
 // ---------------- client → server ----------------
 export type ClientMsg =
   | { t: 'hello'; v: number; name: string; token?: string }
-  | { t: 'queue'; format: OnlineFormat }
+  /** `look`: the character the player picked, if any (personality preset index). */
+  | { t: 'queue'; format: OnlineFormat; look?: number }
   | { t: 'cancel' }
   /** Your action; only valid after an "ask". */
   | { t: 'act'; type: ActionName; to: number }

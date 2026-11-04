@@ -13,6 +13,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import createPokerModule from '../../web/src/wasm/poker.js';
 import { type ClientMsg, type OnlineFormat, PROTOCOL_VERSION } from '../../web/src/net/protocol.ts';
+import { cleanLook } from './looks.ts';
 import { Matchmaker } from './matchmaker.ts';
 import { Player } from './player.ts';
 import { Store } from './store.ts';
@@ -115,7 +116,10 @@ wss.on('connection', (ws) => {
     switch (msg.t) {
       case 'queue':
         if (player.table) player.send({ t: 'refused', what: 'queue', reason: '你已经在牌桌上了' });
-        else if (msg.format === 'quick' || msg.format === 'standard') matchmaker.join(player, msg.format as OnlineFormat);
+        else if (msg.format === 'quick' || msg.format === 'standard') {
+          player.look = cleanLook(msg.look);
+          matchmaker.join(player, msg.format as OnlineFormat);
+        }
         break;
       case 'cancel':
         matchmaker.leave(player);

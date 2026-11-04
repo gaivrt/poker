@@ -8,6 +8,7 @@ import { randomBytes } from 'node:crypto';
 import type { ActionName, GameEvent, Legal, SignalKindName, Standing, TableState } from '../../web/src/engine.ts';
 import type { ClientMsg, OnlineFormat, SeatInfo, ServerMsg } from '../../web/src/net/protocol.ts';
 import type { PokerModule, WasmSession } from '../../web/src/wasm/poker.js';
+import { assignLooks, picksFree } from './looks.ts';
 import type { Player } from './player.ts';
 import { rotate, unrot } from './rotate.ts';
 import type { Store } from './store.ts';
@@ -18,6 +19,7 @@ const ACK_CAP_MS = 10000;       // longest wait for a slow client after a batch
 const PAUSE_MS = 4000;          // between hands
 const SHOW_MS = 5000;           // to decide whether to show after winning uncontested
 const ABANDONED_MS = 60000;     // nobody watching this long: play out the rest without pauses
+const DEAL_TRIES = 200;         // deals to find a roster that leaves everyone's picked look free
 const SIGNAL_KIND: Record<SignalKindName, number> = { line: 0, expression: 1, gesture: 2, sticker: 3 };
 const ACTIONS: ActionName[] = ['fold', 'check', 'call', 'bet', 'raise'];
 // Ranked points by place (1st..6th), shared places averaged; see docs/04 §2.3.
@@ -65,13 +67,20 @@ export class Table {
       p.away = false;
       mask |= 1 << seat;
     });
-    this.s = new deps.mod.Session(format, difficulty, randomBytes(4).readUInt32LE(0), mask);
-    // Character art: bots have their own; people get the looks no bot is using.
-    const roster = JSON.parse(this.s.roster()) as number[];
-    const spare = [0, 1, 2, 3, 4, 5].filter((p) => !roster.includes(p));
-    this.info = roster.map((look, seat) => {
+    const picks = this.people().map((p) => p.look);
+    const deal = () => new deps.mod.Session(format, difficulty, randomBytes(4).readUInt32LE(0), mask);
+    // A bot's look is its personality: deal again until no bot holds a look someone picked.
+    this.s = deal();
+    let roster = JSON.parse(this.s.roster()) as number[];
+    for (let i = 0; i < DEAL_TRIES && !picksFree(roster, picks); i++) {
+      this.s.delete();
+      this.s = deal();
+      roster = JSON.parse(this.s.roster()) as number[];
+    }
+    const looks = assignLooks(roster, picks);
+    this.info = roster.map((_, seat) => {
       const p = this.seats[seat];
-      return p ? { name: p.name, bot: false, look: spare.shift() ?? 0 } : { name: '', bot: true, look };
+      return p ? { name: p.name, bot: false, look: looks[seat] } : { name: '', bot: true, look: looks[seat] };
     });
     deps.store.gameStarted(this.id, format);
     deps.log(`table ${this.id} ${format}: ${players.map((p) => p.name).join(', ')} + ${6 - players.length} bots (difficulty ${difficulty})`);

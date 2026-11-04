@@ -13,7 +13,7 @@ import { Moments } from './fx/moments';
 import { Particles } from './fx/particles';
 import { type Quality, Post } from './fx/post';
 import { makeSticker } from './fx/stickers';
-import { loadProfile, saveProfile } from './profile';
+import { hostIndex, loadProfile, saveProfile } from './profile';
 import { Lobby } from './screens/Lobby';
 import { type PoseSet, characterId, loadBackground, loadPoses, loadTableArt } from './stage/assets';
 import { TableStage } from './stage/TableStage';
@@ -180,13 +180,13 @@ function teardown() {
 async function showHome() {
   teardown();
   overlay.setInGame(false);
-  const mascot = CAST[4];
-  const [bg, poses] = await Promise.all([loadBackground('lobby', { x: 1300, y: 380 }), loadPoses(characterId(4), mascot)]);
+  const profile = loadProfile();
+  const host = hostIndex(profile);
+  const [bg, poses] = await Promise.all([loadBackground('lobby', { x: 1300, y: 380 }), loadPoses(characterId(host), CAST[host])]);
   music.play('lobby');
-  lobby = new Lobby(bg, poses.smug, mascot, particles, worldFx);
+  lobby = new Lobby(bg, poses.smug, CAST[host], particles, worldFx);
   world.addChild(lobby);
   if (debug) debug.lobby = lobby;
-  const profile = loadProfile();
   const handlers = {
     start: (format: Format, difficulty: Difficulty, ranked: boolean) => void start(format, difficulty, ranked),
     online: (format: OnlineFormat) => void startOnline(format),
@@ -198,6 +198,10 @@ async function showHome() {
     setLook: (look: number) => {
       profile.look = look;
       saveProfile(profile);
+      const shown = lobby;
+      void loadPoses(characterId(look), CAST[look]).then((p) => {
+        if (lobby === shown && profile.look === look) shown?.setCharacter(p.smug, CAST[look]);
+      });
     },
   };
   overlay.showHome(profile, handlers);
@@ -243,7 +247,7 @@ async function startOnline(format: OnlineFormat) {
     return;
   }
   net.handler = lobbyHandler;
-  net.send({ t: 'queue', format });
+  net.send({ t: 'queue', format, look: profile.look });
 }
 
 /** No server (e.g. this demo page): offer a ranked game against the AI instead. */
@@ -269,7 +273,7 @@ async function beginOnline(m: Extract<ServerMsg, { t: 'matched' }>) {
   if (m.rejoin) overlay.toast('回到牌桌：正在追上进度');
   teardown();
   const cast = m.seats.map((s, i) => (i === 0 ? HERO : s.bot ? CAST[s.look % CAST.length] : personCharacter(s)));
-  // The server hands each person a character no bot at this table is using.
+  // The server gives each person their pick when it can, else a character nobody at this table uses.
   const looks = m.seats.map((s) => s.look);
   const built = await buildTable(cast, looks);
   onlineGame = true;

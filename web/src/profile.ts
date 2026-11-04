@@ -10,6 +10,9 @@ export interface Profile {
   look?: number;
 }
 
+/** Who stands in the lobby: your character, or 葵 until you pick one. */
+export const hostIndex = (p: Profile) => p.look ?? 4;
+
 export const TIERS = [
   { name: '新手', min: 0 },
   { name: '青铜', min: 100 },
