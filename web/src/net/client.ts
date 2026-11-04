@@ -14,7 +14,8 @@ export function serverUrl(): string | null {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
   // vite dev (5173) and preview (4173): the game server runs next to it on 8787
   if (location.port === '5173' || location.port === '4173') return `ws://${location.hostname}:8787/ws`;
-  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+  // Next to the page, so the game also runs from a subfolder (/poker/ → /poker/ws).
+  return new URL('ws', location.href).href.replace(/^http/, 'ws');
 }
 
 type Welcome = Extract<ServerMsg, { t: 'welcome' }>;
